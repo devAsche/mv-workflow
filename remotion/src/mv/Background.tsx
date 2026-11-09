@@ -15,7 +15,7 @@ import {
 import { envelope, hitIndex, lookAt, rand } from "./beat";
 import { rgbShift } from "./effects/rgb-shift";
 import { sliceShift } from "./effects/slice-shift";
-import type { Look, Plan, Shot, Timing } from "./types";
+import type { GradeKey, Look, Plan, Shot, Timing } from "./types";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
@@ -199,10 +199,36 @@ const ShotView: React.FC<{ shot: Shot; from: number; index: number; plan: Plan; 
   );
 };
 
+// Colour grade of the background at time t, from plan.grade keyframes.
+export const gradeAt = (plan: Plan, t: number): string | undefined => {
+  const keys = plan.grade;
+  if (!keys || !keys.length) return undefined;
+  const v = (k: keyof Omit<GradeKey, "t">, def: number) => {
+    const ks = keys.filter((g) => g[k] !== undefined);
+    if (!ks.length) return def;
+    if (t <= ks[0].t) return ks[0][k] as number;
+    for (let i = 0; i + 1 < ks.length; i++) {
+      if (t < ks[i + 1].t) {
+        const f = (t - ks[i].t) / (ks[i + 1].t - ks[i].t);
+        const a = ks[i][k] as number;
+        const b = ks[i + 1][k] as number;
+        return a + (b - a) * Easing.inOut(Easing.sin)(f);
+      }
+    }
+    return ks[ks.length - 1][k] as number;
+  };
+  const s = v("saturate", 1);
+  const b = v("brightness", 1);
+  const c = v("contrast", 1);
+  const h = v("hue", 0);
+  return `saturate(${s.toFixed(3)}) brightness(${b.toFixed(3)}) contrast(${c.toFixed(3)})${Math.abs(h) > 0.1 ? ` hue-rotate(${h.toFixed(1)}deg)` : ""}`;
+};
+
 export const Background: React.FC<{ plan: Plan; timing: Timing }> = ({ plan, timing }) => {
   const { fps } = useVideoConfig();
+  const frame = useCurrentFrame();
   return (
-    <AbsoluteFill>
+    <AbsoluteFill style={{ filter: gradeAt(plan, frame / fps) }}>
       {plan.shots.map((s, i) => {
         const from = Math.round(s.start * fps);
         const to = Math.round(s.end * fps);

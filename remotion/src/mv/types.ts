@@ -32,7 +32,8 @@ export type Timing = {
 //   impact   one big bold line, characters punch in with an RGB split (drops, last chorus)
 //   stack    lines pile up bottom-left, older lines dim (pre-chorus build)
 //   none     no lyrics (intro, instrumental)
-export type LyricStyle = "center" | "vertical" | "impact" | "stack" | "none";
+//   drops    onomatopoeia: characters fall like raindrops and land with a ripple, chunks scattered
+export type LyricStyle = "center" | "vertical" | "impact" | "stack" | "drops" | "none";
 
 export type FontRole = "mincho" | "gothic" | "impact";
 
@@ -52,6 +53,20 @@ export type Look = {
   tint?: string; // colour laid over the background (mix-blend: color)
   tintAmount?: number; // 0..1
   position?: "center" | "low" | "high"; // for center/impact
+  rain?: number; // 0..1 density of falling rain streaks over the background
+  rainAngle?: number; // degrees from vertical, positive leans right
+  rainSpeed?: number; // multiplier, default 1
+  ripples?: number; // 0..1 ripples spawned on beats in the lower part of the frame
+  sparkle?: number; // 0..1 twinkling four-point stars
+};
+
+// Colour grade keyframes over the whole video (background layer only), linearly interpolated.
+export type GradeKey = {
+  t: number; // seconds
+  saturate?: number; // 1 = as is, 0 = monochrome
+  brightness?: number; // 1 = as is
+  contrast?: number; // 1 = as is
+  hue?: number; // degrees
 };
 
 export type Pattern = "lines" | "rings" | "grid" | "none";
@@ -84,6 +99,9 @@ export type Plan = {
   shots: Shot[];
   titleCard?: { start: number; end: number }; // seconds; shows title/artist
   fadeOut?: number; // seconds of fade to black at the end
+  fadeColor?: string; // colour of the end fade, default black
+  grade?: GradeKey[]; // colour arc of the song (e.g. monochrome verses, colour returning)
+  credits?: { start: number; end: number; lines: string[] }; // small text block, bottom-left
 };
 
 export type MVProps = {
