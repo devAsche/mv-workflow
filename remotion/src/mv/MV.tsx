@@ -16,8 +16,9 @@ export const calculateMVMetadata: CalculateMetadataFunction<MVProps> = async ({ 
     if (!res.ok) throw new Error(`could not load public/${src} (${res.status})`);
     return (await res.json()) as T;
   };
-  const timing = props.timing ?? (props.timingSrc ? await load<Timing>(props.timingSrc) : undefined);
-  const plan = props.plan ?? (props.planSrc ? await load<Plan>(props.planSrc) : undefined);
+  // files named on the command line win over the built-in sample in defaultProps
+  const timing = props.timingSrc ? await load<Timing>(props.timingSrc) : props.timing;
+  const plan = props.planSrc ? await load<Plan>(props.planSrc) : props.plan;
   if (!timing || !plan) throw new Error("MV needs timing (or timingSrc) and plan (or planSrc)");
   return {
     durationInFrames: Math.max(1, Math.ceil(timing.duration * FPS)),
