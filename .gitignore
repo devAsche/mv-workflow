@@ -1,0 +1,15 @@
+# songs, lyrics, references and generated media stay out of this public repo
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.mp4
+*.mov
+*.png
+*.jpg
+*.jpeg
+*.webp
+lyrics*.txt
+node_modules/
+out/
+__pycache__/

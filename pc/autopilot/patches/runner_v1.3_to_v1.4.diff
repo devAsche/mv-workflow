@@ -1,0 +1,27 @@
+--- runner.py (v1.3)	2026-11-09 16:40:26.126785000 +0000
++++ runner.py (v1.4)	2026-11-09 16:40:26.095304000 +0000
+@@ -29,7 +29,7 @@
+ 
+ load_cfg()
+ RESTART_CODE = 3   # start_runner.bat restarts the runner when it exits with this code
+-VERSION = "1.3"
++VERSION = "1.4"
+ 
+ 
+ def load_keys():
+@@ -390,6 +390,15 @@
+             "elevenlabs_tts": h_elevenlabs_tts, "remotion_install": h_remotion_install, "remotion_render": h_remotion_render,
+             "transcribe": h_transcribe, "copy": h_copy, "pip_install": h_pip_install, "restart": h_restart}
+ 
++# ---- v1.4: MV workflow job types live in mv_jobs.py next to this file. The jobs above are unchanged;
++# ---- if mv_jobs.py is missing or broken, only the MV jobs are unavailable.
++try:
++    import mv_jobs
++    for _k, _fn in mv_jobs.register(sys.modules[__name__]).items():
++        HANDLERS.setdefault(_k, _fn)
++except Exception as _e:
++    print(f"mv_jobs not loaded ({_e.__class__.__name__}: {_e}); ad-video jobs work as before", flush=True)
++
+ 
+ # ---------------------------------------------------------------- main loop
+ def heartbeat(current=None):
