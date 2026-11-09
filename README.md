@@ -20,6 +20,7 @@ Sunoで作った曲のミュージックビデオを、Claudeと凌さんのPC�
 | --- | --- |
 | `pc/autopilot/mv_jobs.py` | ランナーに足すMV用ジョブ（`mv_setup`、`mv_analyze`）。PCでは `C:\AI model\autopilot\mv_jobs.py` に置く |
 | `pc/autopilot/mv/analyze.py` | 楽曲解析の本体。MV専用のPython環境 `C:\AI model\venv-mv` で動く |
+| `pc/autopilot/start_runner_icon.bat` | デスクトップのアイコンから押す起動ファイル。`runner.py` がすでに動いていれば何もしないので、二重起動にならない |
 | `pc/autopilot/patches/` | ランナー本体（runner.py）への変更点。広告用のジョブには手を入れていない |
 | `pc/comfy_graphs/` | ComfyUIのAPI形式ワークフロー（Qwen Image 2.1 GGUF など） |
 | `remotion/` | 合成と歌詞モーション。`timing.json` と絵コンテ `plan.json` から書き出す（詳しくは `remotion/README.md`） |

@@ -9,7 +9,7 @@ Output: <outdir>/timing.json   beats, downbeats, bpm, energy curve, sections, ly
 Every stage has a fallback so one failing library never stops the whole analysis; the
 fallbacks used are recorded in timing.json["devices"] and ["notes"].
 """
-import argparse, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, faulthandler, json, os, re, shutil, subprocess, sys, tempfile
 
 import numpy as np
 import soundfile as sf
@@ -153,12 +153,14 @@ def energy_curve(wav, hop_s=0.25):
 
 def align(vocals, lines, language, model_name, device, notes):
     import stable_whisper
+    log("whisper load", model_name, device)
     try:
         model = stable_whisper.load_model(model_name, device=device)
     except Exception as e:
         notes.append(f"whisper on {device} failed, using cpu: {e}")
         device = "cpu"
         model = stable_whisper.load_model(model_name, device=device)
+    log("whisper ready; aligning", len(lines or []), "lyric lines" if lines else "(no lyrics: transcribing)")
     if lines:
         text = "\n".join(t for _, t in lines)
         res = model.align(vocals, text, language=language, original_split=True)
@@ -168,6 +170,7 @@ def align(vocals, lines, language, model_name, device, notes):
     for s in res.segments:
         words = [{"text": w.word, "start": round(float(w.start), 3), "end": round(float(w.end), 3)} for w in (s.words or [])]
         segs.append({"text": s.text.strip(), "start": round(float(s.start), 3), "end": round(float(s.end), 3), "words": words})
+    log("aligned", len(segs), "segments")
     return segs, f"stable-ts/{model_name}/{device}"
 
 
@@ -262,6 +265,9 @@ def main():
     ap.add_argument("--skip-separation", action="store_true")
     a = ap.parse_args()
     os.makedirs(a.outdir, exist_ok=True)
+    # if a stage hangs, the stack of every thread is written to the job log every 5 minutes
+    # (this also keeps output flowing, so the runner's job timeout can fire)
+    faulthandler.dump_traceback_later(300, repeat=True, file=sys.stderr)
     notes = []
     device = a.device
     if device == "auto":
@@ -284,6 +290,7 @@ def main():
     segs, align_src = align(vocals or wav, lyric_lines, a.language, a.model, device, notes)
     if vocals:
         segs = snap_to_voice(segs, vocals, notes)
+        log("voice snap:", notes[-1] if notes and "moved" in notes[-1] else "nothing moved")
     lines = attach_sections(lyric_lines, segs, notes)
     name_inferred_sections(lines, energy, 0.25, notes)
     sections = build_sections(lines, duration, downbeats)
@@ -298,6 +305,7 @@ def main():
     json.dump(timing, open(os.path.join(a.outdir, "timing.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     srt(lines, os.path.join(a.outdir, "lyrics.srt"))
     os.remove(wav)
+    faulthandler.cancel_dump_traceback_later()
     log("done:", len(lines), "lines,", len(sections), "sections")
 
 
