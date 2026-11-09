@@ -171,6 +171,44 @@ def align(vocals, lines, language, model_name, device, notes):
     return segs, f"stable-ts/{model_name}/{device}"
 
 
+def snap_to_voice(segs, vocals, notes, hop=0.02):
+    """Whisper alignment sometimes starts a line inside the silence before it (seen: 8 s early).
+    Using the separated vocal, move a word's start to where the voice begins when its first
+    0.1 s is silent and the voice starts at least 0.25 s later inside the word."""
+    y, sr = sf.read(vocals, always_2d=True)
+    y = y.mean(axis=1)
+    h = int(sr * hop)
+    n = len(y) // h
+    db = 20 * np.log10(np.sqrt(np.mean(y[: n * h].reshape(n, h) ** 2, axis=1)) + 1e-9)
+    lo, hi = np.percentile(db, 10), np.percentile(db, 95)
+    voiced = db > lo + 0.35 * (hi - lo)
+    moved = 0
+    for s in segs:
+        ws = s["words"]
+        for k, w in enumerate(ws):
+            a, b = int(w["start"] / hop), min(n, int(w["end"] / hop))
+            nxt = ws[k + 1] if k + 1 < len(ws) else None
+            # a silent word stranded before a long gap: it belongs where the voice comes back
+            if nxt and nxt["start"] - w["end"] > 0.5 and not voiced[a:max(b, a + 1)].any():
+                c, e = b, min(n, int(nxt["start"] / hop) + 5)
+                if c < e and voiced[c:e].any():
+                    new = min((c + int(np.argmax(voiced[c:e]))) * hop, nxt["start"] - 0.05)
+                    w["start"], w["end"] = round(new, 3), round(max(nxt["start"], new + 0.05), 3)
+                    moved += 1
+                    continue
+            if b - a < 2 or voiced[a:min(a + 5, b)].any() or not voiced[a:b].any():
+                continue
+            new = (a + int(np.argmax(voiced[a:b]))) * hop
+            if new - w["start"] >= 0.25:
+                w["start"] = round(new, 3)
+                moved += 1
+        if s["words"]:
+            s["start"] = s["words"][0]["start"]
+    if moved:
+        notes.append(f"{moved} word starts moved to where the voice begins")
+    return segs
+
+
 def attach_sections(lines, segs, notes):
     """Give each aligned segment its lyric line and section label."""
     if lines and len(segs) != len(lines):
@@ -244,6 +282,8 @@ def main():
     vocals = None if a.skip_separation else separate(wav, a.outdir, device, notes)
     lyric_lines = parse_lyrics(a.lyrics, notes)
     segs, align_src = align(vocals or wav, lyric_lines, a.language, a.model, device, notes)
+    if vocals:
+        segs = snap_to_voice(segs, vocals, notes)
     lines = attach_sections(lyric_lines, segs, notes)
     name_inferred_sections(lines, energy, 0.25, notes)
     sections = build_sections(lines, duration, downbeats)
