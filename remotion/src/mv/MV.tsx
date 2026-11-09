@@ -6,6 +6,7 @@ import { useSongFonts } from "./fonts";
 import { Background } from "./Background";
 import { Lyrics } from "./Lyrics";
 import { Overlay } from "./Overlay";
+import { Weather } from "./Weather";
 import type { MVProps, Plan, Timing } from "./types";
 
 export const FPS = 30;
@@ -29,13 +30,14 @@ export const calculateMVMetadata: CalculateMetadataFunction<MVProps> = async ({ 
 export const MV: React.FC<MVProps> = ({ timing, plan, debug }) => {
   if (!timing || !plan) throw new Error("timing/plan missing");
   const allText = useMemo(
-    () => [plan.title ?? "", plan.artist ?? "", ...timing.lines.map((l) => l.text), ...Object.values(plan.lines ?? {}).map((o) => o.text ?? "")].join(""),
+    () => [plan.title ?? "", plan.artist ?? "", ...timing.lines.map((l) => l.text), ...Object.values(plan.lines ?? {}).map((o) => o.text ?? ""), ...(plan.credits?.lines ?? [])].join(""),
     [plan, timing],
   );
   useSongFonts(plan, allText);
   return (
     <AbsoluteFill style={{ backgroundColor: plan.palette.bg }}>
       <Background plan={plan} timing={timing} />
+      <Weather plan={plan} timing={timing} />
       <Lyrics plan={plan} timing={timing} />
       <Overlay plan={plan} timing={timing} debug={debug} />
       {plan.audio ? <Audio src={staticFile(plan.audio)} /> : null}

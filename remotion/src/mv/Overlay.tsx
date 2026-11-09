@@ -69,7 +69,29 @@ export const Overlay: React.FC<{ plan: Plan; timing: Timing; debug?: boolean }> 
       ) : null}
       {grain > 0 ? <Grain amount={grain * (0.45 + 0.25 * energy)} frame={frame} /> : null}
       <AbsoluteFill style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55) 100%)" }} />
-      {endFade > 0 ? <AbsoluteFill style={{ backgroundColor: "black", opacity: endFade }} /> : null}
+      {plan.credits && t >= plan.credits.start && t <= plan.credits.end ? (
+        <div
+          style={{
+            position: "absolute",
+            left: "6%",
+            bottom: "9%",
+            fontFamily: fontStack(plan, "gothic"),
+            fontWeight: 400,
+            fontSize: 28 * (height / 1080),
+            letterSpacing: "0.3em",
+            lineHeight: 1.9,
+            color: plan.palette.fg,
+            opacity:
+              interpolate(t, [plan.credits.start, plan.credits.start + 1], [0, 0.85], clamp) *
+              interpolate(t, [plan.credits.end - 1, plan.credits.end], [1, 0], clamp),
+          }}
+        >
+          {plan.credits.lines.map((l, i) => (
+            <div key={i}>{l}</div>
+          ))}
+        </div>
+      ) : null}
+      {endFade > 0 ? <AbsoluteFill style={{ backgroundColor: plan.fadeColor ?? "black", opacity: endFade }} /> : null}
       {debug ? (
         <div
           style={{

@@ -100,3 +100,24 @@ export const rand = (seed: number) => {
   const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
   return (x - Math.floor(x)) * 2 - 1;
 };
+
+// A numeric look value that eases from the previous section's value into the current one over
+// `ramp` seconds after the section starts, so rain, dim and the like do not jump at a boundary.
+export const smoothLook = (plan: Plan, timing: Timing, t: number, key: keyof Look, ramp = 1.5, fallback = 0): number => {
+  const sec = sectionAt(timing, t);
+  const cur = lookForLabel(plan, sec?.label)[key];
+  const curV = typeof cur === "number" ? cur : fallback;
+  if (!sec) return curV;
+  const i = timing.sections.indexOf(sec);
+  if (i <= 0 || t - sec.start >= ramp) return curV;
+  const prev = lookForLabel(plan, timing.sections[i - 1].label)[key];
+  const prevV = typeof prev === "number" ? prev : fallback;
+  const f = Math.max(0, (t - sec.start) / ramp);
+  return prevV + (curV - prevV) * f;
+};
+
+// Deterministic hash in [0, 1).
+export const hash01 = (a: number, b = 0) => {
+  const x = Math.sin(a * 12.9898 + b * 78.233 + 0.5) * 43758.5453;
+  return x - Math.floor(x);
+};

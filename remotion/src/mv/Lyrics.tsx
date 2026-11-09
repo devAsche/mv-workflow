@@ -3,6 +3,7 @@ import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { charTimes, lookForLabel, type TimedChar } from "./beat";
 import { Center } from "./templates/Center";
+import { Drops } from "./templates/Drops";
 import { Impact } from "./templates/Impact";
 import { Stack, type StackItem } from "./templates/Stack";
 import { Vertical } from "./templates/Vertical";
@@ -27,6 +28,7 @@ export const prepareLines = (plan: Plan, timing: Timing): Prepared[] => {
   });
   out.forEach((p, i) => {
     const next = out[i + 1];
+    // drops need their fall before the first syllable, so they mount earlier (see Drops FALL)
     const natural = p.line.end + TAIL;
     p.hideAt = next ? Math.max(p.line.end + 0.05, Math.min(natural, next.line.start - 0.04)) : natural;
   });
@@ -60,10 +62,12 @@ export const Lyrics: React.FC<{ plan: Plan; timing: Timing }> = ({ plan, timing 
 
   for (const p of lines) {
     if (p.look.lyric === "stack" || p.look.lyric === "none") continue;
-    if (t < p.line.start - LEAD || t >= p.hideAt) continue;
+    const lead = p.look.lyric === "drops" ? 0.4 : LEAD;
+    if (t < p.line.start - lead || t >= p.hideAt) continue;
     const props = { line: p.line, index: p.index, text: p.text, chars: p.chars, t, hideAt: p.hideAt, look: p.look, plan, timing };
     if (p.look.lyric === "vertical") nodes.push(<Vertical key={p.index} {...props} />);
     else if (p.look.lyric === "impact") nodes.push(<Impact key={p.index} {...props} />);
+    else if (p.look.lyric === "drops") nodes.push(<Drops key={p.index} {...props} />);
     else nodes.push(<Center key={p.index} {...props} />);
   }
 
