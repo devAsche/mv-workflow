@@ -197,7 +197,8 @@ def build_sections(lines, duration, downbeats):
         # nearest downbeat at or before the first sung word, for cutting on the bar
         prev = downbeats[downbeats <= s["start"] + 0.05] if len(downbeats) else []
         s["downbeat"] = round(float(prev[-1]), 3) if len(prev) else s["start"]
-    if sec and duration - sec[-1]["start"] > 0 and lines and duration - lines[-1]["end"] > 4:
+    already_outro = bool(sec) and re.match(r"(outro|ending|アウトロ)", sec[-1]["label"], re.I)
+    if sec and not already_outro and lines and duration - lines[-1]["end"] > 4:
         sec[-1]["end"] = lines[-1]["end"]
         sec.append({"label": "Outro", "start": lines[-1]["end"], "end": round(duration, 3), "downbeat": lines[-1]["end"]})
     return sec
