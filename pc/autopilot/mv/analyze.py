@@ -26,21 +26,86 @@ def to_wav(src, dst, sr=44100):
     return dst
 
 
-def parse_lyrics(path):
-    """Return [(section_label or None, line_text), ...] without blank lines; tags become labels."""
+MD_HEADING = re.compile(r"^\s*(?:#{1,6}\s+(.+?)\s*#*\s*|\*\*(.+?)\*\*|__(.+?)__)\s*$")
+
+
+def parse_lyrics(path, notes=None):
+    """Return [(section_label or None, line_text), ...] without blank lines.
+
+    Suno-style tags ([Verse 1], [Chorus] ...) become section labels. Markdown headings
+    (# Title, **Title**) are not sung: a heading that holds a tag is used as a label, any
+    other heading (usually the song title) is skipped. When the file has no tags at all,
+    sections are inferred from blank lines: the longest runs of blank lines separate
+    sections and are labelled "Part 1", "Part 2" ... (renamed later by loudness)."""
     if not path:
         return []
-    out, label = [], None
+    out, label, tagged, blanks, gaps = [], None, False, 0, []
     for raw in open(path, encoding="utf-8-sig"):
         line = raw.strip()
         if not line:
+            blanks += 1
+            continue
+        h = MD_HEADING.match(line)
+        if h:
+            inner = next(g for g in h.groups() if g)
+            m = SECTION_TAG.match(inner)
+            if m:
+                label, tagged = m.group(1).strip(), True
+            elif notes is not None:
+                notes.append(f"skipped heading line: {inner}")
+            blanks = 0
             continue
         m = SECTION_TAG.match(line)
         if m:
-            label = m.group(1).strip()
+            label, tagged = m.group(1).strip(), True
+            blanks = 0
             continue
+        gaps.append(blanks if out else 0)
+        blanks = 0
         out.append((label, line))
+    if not tagged and out:
+        cut = max(gaps[1:] or [0])
+        if cut >= 2:  # only when the file really uses longer gaps between sections
+            part, res = 1, []
+            for i, (_, text) in enumerate(out):
+                if i > 0 and gaps[i] >= cut:
+                    part += 1
+                res.append((f"Part {part}", text))
+            out = res
+            if notes is not None:
+                notes.append(f"no section tags: {part} sections inferred from blank lines (gap >= {cut})")
     return out
+
+
+def name_inferred_sections(lines, energy, hop, notes):
+    """'Part N' sections get names from loudness: the loudest third are Chorus, a quiet last
+    part is Outro, the rest Verse. A guess for the first storyboard, meant to be edited."""
+    parts = []
+    for ln in lines:
+        if ln["section"] and ln["section"].startswith("Part ") and (not parts or parts[-1]["label"] != ln["section"]):
+            parts.append({"label": ln["section"], "start": ln["start"], "end": ln["end"]})
+        elif parts and ln["section"] == parts[-1]["label"]:
+            parts[-1]["end"] = ln["end"]
+    if len(parts) < 3:
+        return
+    e = np.asarray(energy)
+    for p in parts:
+        a, b = int(p["start"] / hop), max(int(p["start"] / hop) + 1, int(p["end"] / hop))
+        p["loud"] = float(e[a:b].mean()) if b <= len(e) and a < b else 0.0
+    louds = sorted(p["loud"] for p in parts)
+    thr = louds[int(len(louds) * 2 / 3)]
+    names, n_ch, n_v = {}, 0, 0
+    for i, p in enumerate(parts):
+        if p["loud"] >= thr:
+            n_ch += 1; names[p["label"]] = f"Chorus {n_ch}"
+        elif i == len(parts) - 1:
+            names[p["label"]] = "Outro"
+        else:
+            n_v += 1; names[p["label"]] = f"Verse {n_v}"
+    for ln in lines:
+        if ln["section"] in names:
+            ln["section"] = names[ln["section"]]
+    notes.append("section names guessed from loudness: " + ", ".join(f"{k}={v}" for k, v in names.items()))
 
 
 def separate(wav, outdir, device, notes):
@@ -176,9 +241,10 @@ def main():
     log("bpm", bpm, "beats", len(beats), "downbeats", len(downbeats))
 
     vocals = None if a.skip_separation else separate(wav, a.outdir, device, notes)
-    lyric_lines = parse_lyrics(a.lyrics)
+    lyric_lines = parse_lyrics(a.lyrics, notes)
     segs, align_src = align(vocals or wav, lyric_lines, a.language, a.model, device, notes)
     lines = attach_sections(lyric_lines, segs, notes)
+    name_inferred_sections(lines, energy, 0.25, notes)
     sections = build_sections(lines, duration, downbeats)
 
     timing = {

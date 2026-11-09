@@ -22,6 +22,7 @@ Sunoで作った曲のミュージックビデオを、Claudeと凌さんのPC�
 | `pc/autopilot/mv/analyze.py` | 楽曲解析の本体。MV専用のPython環境 `C:\AI model\venv-mv` で動く |
 | `pc/autopilot/patches/` | ランナー本体（runner.py）への変更点。広告用のジョブには手を入れていない |
 | `pc/comfy_graphs/` | ComfyUIのAPI形式ワークフロー（Qwen Image 2.1 GGUF など） |
+| `remotion/` | 合成と歌詞モーション。`timing.json` と絵コンテ `plan.json` から書き出す（詳しくは `remotion/README.md`） |
 
 ## ランナーのMV用ジョブ
 
@@ -38,7 +39,7 @@ MV専用のPython環境を作り、決まったライブラリだけを入れま
  "language": "ja", "whisper_model": "medium"}
 ```
 
-歌詞ファイルはSunoの形式（`[Verse 1]`、`[Chorus]` などの行がセクション名になる）でそのまま使えます。解析の前にComfyUIのモデルをGPUから降ろし、8GBのVRAMを空けます。
+歌詞ファイルはSunoの形式（`[Verse 1]`、`[Chorus]` などの行がセクション名になる）でそのまま使えます。Markdownの歌詞（`**曲名**` のような見出しつき）も読めて、見出しは歌われない行として除きます。セクションのタグがないときは、空行の長さでセクションを分け、音量から Chorus・Verse・Outro の名前を仮に付けます。解析の前にComfyUIのモデルをGPUから降ろし、8GBのVRAMを空けます。
 
 ## 曲・映像の扱い
 

@@ -1,0 +1,11 @@
+node_modules
+dist
+.DS_Store
+.env
+
+# Rendered videos
+out
+
+# Songs, lyrics, key visuals and clips stay on the PC (this repository is public)
+public/*
+!public/.gitkeep
