@@ -29,7 +29,7 @@
 //         both:   hscale, vscale, kana, skew (shape of the type), slice: [{t, shift, frac, dur}], stretchAt: [t, k], behind: true
 //                 (placed under the character cut-out)
 // fx:    {flash: t, color, dur, peak} | {burst: t, colors, pos, stroke} | {ring: t, pos, size, color, dur} |
-//        {frame: t, size, pos, color, width} | {bars: t, band, out} | {black: [t0, t1]} | {rule: t, pos, len, vertical, color, width, dur} |
+//        {frame: t, size, pos, color, width} | {bars: t, band, out, still} (still: no slam, for a letterbox kept across cuts) | {black: [t0, t1]} | {rule: t, pos, len, vertical, color, width, dur} |
 //        {box: t, pos, size: [w, h], color, opacity, dur, out, vertical} (a plain panel under a lyric so it reads on any picture)
 //        (bars, frames and any fx with under: true are placed below the lyrics; the rest above)
 
@@ -196,7 +196,12 @@
             return fr;
         }
         if (f.bars !== undefined) {
-            var bs = MV.bars(comp, T(f.bars), f.band || 420, {dur: f.dur});
+            var bs;
+            if (f.still) {                          // already in place (the letterbox carried on from the shot before)
+                var bh = (H - (f.band || 420)) / 2, bc = col(f.color || "#000000");
+                bs = [MV.shape(comp, "rect", [W * 1.2, bh + 4], {fill: bc, pos: [W / 2, bh / 2 - 2], name: "bar top"}),
+                      MV.shape(comp, "rect", [W * 1.2, bh + 4], {fill: bc, pos: [W / 2, H - bh / 2 + 2], name: "bar bottom"})];
+            } else bs = MV.bars(comp, T(f.bars), f.band || 420, {dur: f.dur});
             MV.spanAll(bs, T(f.bars), f.out !== undefined ? T(f.out) : z);
             return bs;
         }
