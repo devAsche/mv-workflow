@@ -12,8 +12,19 @@
 //   stills: [song times], save: "name.aep", render: "h264" | "tiff" | null
 // }
 // bg:    {img | solid, extra, move: [[t, scale%, [x, y]]...], ease, punch: {t, big, dur}, mono: {tint, amount}, keep, keepTol,
-//         blur, dim, blinds: {t, dur, angle, width}, mosaic: {t, dur, from}, jolt: [t0, t1, amp], kira: t}
+//         blur, dim, blinds: {t, dur, angle, width}, mosaic: {t, dur, from}, jolt: [t0, t1, amp], kira: t,
+//         look: [[t, zoom%, [fx, fy] source px, [sx, sy] screen point]...]  (a camera on one detail: feet, umbrella, hands),
+//         pivot: [x, y] source px (the anchor: move positions then place this point, rot turns around it),
+//         rot: deg | [[t, deg]...], tilt: deg (same as a fixed rot), flip or mirror: true (左右反転 about the pivot),
+//         negative, swap: [hi, mid, lo, keep%] (palette swap), hls: [hue, light, sat],
+//         tile: {cols, rows, mirror, phase, slide: [px/s, px/s]}, mirror4, ripple: {c: [x, y], r, w, h, speed},
+//         ground: colour (a solid under the picture), win: {shape: rect|ellipse|eye, size: [w, h], pos, fit, border, width}
+//         (fit true: the whole picture sits small inside the window; false: the window looks onto the full-frame picture),
+//         inside: {img: cut-out PNG, h, pos, rim} (the picture shows only inside the silhouette)}
 // bgs:   [bg, ...] with tIn/tOut each, when one shot changes its background
+// shot:  also cut: cut-out PNG the same pixel size as bg.img (built with the bg's own framing, moves and effects except blur,
+//        so it sits exactly on the figure; lyrics with behind: true go between), cutDim: its dim (default the bg's), view: "face" | "eyes" | "hand" | "back" | "feet" | "item" |
+//        "scene" | "type" ... (not drawn; tools/plan_check.py counts how many cuts show a face)
 // char:  {img, h, pos, tIn, slam: {t, from, dur}, move: [[t, scale%]...], hops: [t...], hop: px, echo: {color, offset}, jolt: [t0, t1, amp]}
 // texts: {text, font, size, pos, fill, stroke, strokeWidth, tIn, tOut,
 //         mode: "line" | "chars" | "vchars",
@@ -23,10 +34,16 @@
 //         chars:  words (each character appears at its time), pop, stretch, drop, smear: {dur, angle, len}, strobe: [t0, t1],
 //                 scatter: {t, dur, dist}, crumble: {t, dur}, x/top (vchars)}
 //         both:   hscale, vscale, kana, skew (shape of the type), slice: [{t, shift, frac, dur}], stretchAt: [t, k], behind: true
-//                 (placed under the character cut-out)
+//                 (placed under the character cut-out), plate: "strip" | "box" | "scrim" | "halo" or {kind, color, opacity, pad, dur}
+//                 (something under the letters so they read on any picture; type.plate sets it for every lyric), qa: false
 // fx:    {flash: t, color, dur, peak} | {burst: t, colors, pos, stroke} | {ring: t, pos, size, color, dur} |
-//        {frame: t, size, pos, color, width} | {bars: t, band, out} | {black: [t0, t1]} | {rule: t, pos, len, vertical, color, width, dur}
-//        (bars, frames and any fx with under: true are placed below the lyrics; the rest above)
+//        {frame: t, size, pos, color, width} | {bars: t, band, out, still} (still: no slam, for a letterbox kept across cuts) | {black: [t0, t1]} | {rule: t, pos, len, vertical, color, width, dur} |
+//        {drops: t | [t...], pos: [x, y] | [[x, y]...], area: [x0, y0, x1, y1], rings, size, color, squash, dur} (raindrop rings) |
+//        {box: t, pos, size: [w, h], color, opacity, dur, out, vertical, wipe} (a dark box under lyrics)
+//        (bars, frames, drops, boxes and any fx with under: true are placed below the lyrics; the rest above)
+// finish: {tone: {hi, mid, lo, mix}, unify: {keep, amount, tol, soft, hue, sat}, wash: {color, amount}, vignette, feather, grade: {...}}
+// qa:    {contrast: true}: for every lyric at its settled time, a still with it, one without it and one of it alone on magenta
+//        (qa_NNN_on/off/solo.png, qa.json); tools/qa_contrast.py measures how well each lyric stands out from what is around it
 
 (function () {
     var P = MVJOB.params, OFF = P.offset || 0, t0run = new Date().getTime();
@@ -53,26 +70,68 @@
     function spanRange(L, a, b) { MV.span(L, a, b); return L; }
 
     function buildBg(b, a, z) {
-        var L;
+        var L, tA = b.tIn !== undefined ? T(b.tIn) : a, tZ = b.tOut !== undefined ? T(b.tOut) : z, win = b.win, cover = true;
+        if (b.ground) spanRange(MV.solid(comp, col(b.ground), "ground"), tA, tZ);
         if (b.solid) L = MV.solid(comp, col(b.solid), "bg");
         else L = MV.layerFrom(comp, b.img, {fit: "cover", extra: b.extra || 1.12, name: "bg " + b.img.replace(/^.*[\\\/]/, "")});
-        spanRange(L, b.tIn !== undefined ? T(b.tIn) : a, b.tOut !== undefined ? T(b.tOut) : z);
+        spanRange(L, tA, tZ);
+        if (win && win.fit !== false && !b.solid) {          // the whole picture, small, inside the window
+            var kw = Math.max(win.size[0] / L.source.width, win.size[1] / L.source.height) * 100 * (b.extra || 1.04);
+            MV.tr(L, "scale").setValue([kw, kw]);
+            MV.tr(L, "position").setValue(win.pos || [W / 2, H / 2]);
+            cover = false;
+        }
+        if (b.pivot) MV.tr(L, "anchor").setValue(b.pivot);
+        var flipped = b.flip || b.mirror, about = MV.tr(L, "anchor").value;
+        if (flipped) MV.flip(L, about);
+        if (b.negative) MV.negative(L);
+        if (b.swap) MV.tritone(L, col(b.swap[0]), col(b.swap[1]), col(b.swap[2]), b.swap[3] || 0);
         if (b.mono) MV.mono(L, col(b.mono.tint), b.mono.amount);
         if (b.keep) MV.keepColor(L, col(b.keep), b.keepTol);
+        if (b.hls) MV.hls(L, b.hls);
         if (b.blur) MV.blurFx(L, b.blur);
         if (b.dim) MV.dim(L, b.dim);
+        if (b.tile) MV.tile(L, b.tile.cols, b.tile.rows, b.tile);
+        if (b.mirror4) MV.mirror4(L);
+        if (b.ripple) MV.ripple(L, b.ripple);
         var base = MV.tr(L, "scale").value[0];
         if (b.move) {
             var m = [];
             for (var i = 0; i < b.move.length; i++) m.push([T(b.move[i][0]), base * b.move[i][1] / 100, b.move[i][2] || null]);
             MV.move(L, m, b.ease || "inout");
         }
+        if (b.look) {                                         // a camera on one detail of the picture
+            var lm = [], sw = L.source.width, shh = L.source.height;
+            for (var j = 0; j < b.look.length; j++) {
+                var lk = b.look[j], f = lk[2] ? [flipped ? 2 * about[0] - lk[2][0] : lk[2][0], lk[2][1]] : [sw / 2, shh / 2], kk = base * lk[1] / 100;
+                lm.push([T(lk[0]), kk, MV.focusPos(L, kk, f, lk[3] || (cover ? null : (win.pos || [W / 2, H / 2])), !cover)]);
+            }
+            MV.move(L, lm, b.ease || "inout");
+        }
+        var rot = b.rot !== undefined ? b.rot : b.tilt;
+        if (rot !== undefined) {
+            if (typeof rot === "number") MV.tr(L, "rotation").setValue(rot);
+            else { var rk = []; for (var ri = 0; ri < rot.length; ri++) rk.push([T(rot[ri][0]), rot[ri][1]]); MV.keys(MV.tr(L, "rotation"), rk, b.ease || "inout"); }
+        }
         if (b.punch) MV.punch(L, T(b.punch.t), b.punch.big || 160, b.punch.dur || 0.3);
         if (b.blinds) MV.blindsIn(L, T(b.blinds.t), b.blinds.dur, b.blinds.angle, b.blinds.width);
         if (b.mosaic) MV.mosaicIn(L, T(b.mosaic.t), b.mosaic.dur, b.mosaic.from);
         if (b.jolt) MV.jolt(L, T(b.jolt[0]), T(b.jolt[1]), 24, b.jolt[2] || 20);
         if (b.kira !== undefined) MV.kira(L, T(b.kira), 5);
+        if (win) MV.windowOn(comp, L, win.shape || "rect", win.size, win.pos || [W / 2, H / 2], {border: col(win.border), width: win.width});
+        if (b.inside) MV.insideOf(comp, L, b.inside.img, {h: b.inside.h, pos: b.inside.pos, rim: col(b.inside.rim)});
         return L;
+    }
+
+    // the figure cut out of the bg (same pixel size), framed and moved exactly like the bg; no blur, its own dim
+    function buildCut(bg, path, dimV, a, z) {
+        var cb = {};
+        for (var ck in bg) if (bg.hasOwnProperty(ck)) cb[ck] = bg[ck];
+        cb.img = path; cb.solid = undefined; cb.blur = undefined; cb.ground = undefined;
+        cb.dim = dimV !== undefined ? dimV : bg.dim;
+        var c = buildBg(cb, a, z);
+        c.name = "cut " + path.replace(/^.*[\\\/]/, "");
+        return c;
     }
 
     function buildChar(c, a, z) {
@@ -144,7 +203,7 @@
         if (x.strobe && !x.image) MV.strobe(L, T(x.strobe[0]), T(x.strobe[1]), 2);
         if (x.kira !== undefined && !x.image) MV.kira(L, T(x.kira), 5);
         slices([L], x);
-        return vis;
+        return {vis: vis, text: L};
     }
 
     function buildChars(x, a, z) {
@@ -167,6 +226,34 @@
         return chars;
     }
 
+    // a time when a lyric has fully appeared and has not started to leave (plate sizes and the contrast check use it)
+    function settle(x, xa, xz) {
+        var fd = comp.frameDuration, t = xa + Math.min(0.6, (xz - xa) * 0.5);
+        if (x.words && x.words.length) {
+            var last = x.words[x.words.length - 1], e = last.length > 2 ? last[2] : last[1];
+            t = T(Math.min(e, last[1] + 0.6)) + 0.25;
+        }
+        if (x.scatter) t = Math.max(t, T(x.scatter.t) + (x.scatter.dur || 0.4) + 0.035 * x.text.length + 0.05);
+        if (x.crumble) t = Math.min(t, T(x.crumble.t) - 2 * fd);
+        if (x.slice && x.slice.length) {
+            var s0 = T(x.slice[0].t), s1 = s0 + (x.slice[0].dur || 0.25);
+            if (t > s0 - 2 * fd && t < s1 + 2 * fd) t = s1 + 2 * fd;
+        }
+        return Math.max(xa + fd, Math.min(t, xz - 2 * fd));
+    }
+
+    // vertical lyrics: one group of letters per column (for one strip per column)
+    function columns(chars, t, size) {
+        var groups = [], xs = [];
+        for (var i = 0; i < chars.length; i++) {
+            var px = MV.tr(chars[i], "position").valueAtTime(t, false)[0], k = -1;
+            for (var j = 0; j < xs.length; j++) if (Math.abs(xs[j] - px) < size * 0.6) { k = j; break; }
+            if (k < 0) { xs.push(px); groups.push([]); k = groups.length - 1; }
+            groups[k].push(chars[i]);
+        }
+        return groups;
+    }
+
     function buildFx(f, a, z) {
         if (f.flash !== undefined) return MV.flash(comp, T(f.flash), col(f.color || "#ffffff"), f.dur || 0.25, f.peak || 100);
         if (f.burst !== undefined) return MV.burst(comp, T(f.burst), cols(f.colors || ["#ffd400", "#ffffff"]),
@@ -178,9 +265,29 @@
             return fr;
         }
         if (f.bars !== undefined) {
-            var bs = MV.bars(comp, T(f.bars), f.band || 420, {dur: f.dur});
+            var bs;
+            if (f.still) {                          // already in place (the letterbox carried on from the shot before)
+                var bh = (H - (f.band || 420)) / 2, bc = col(f.color || "#000000");
+                bs = [MV.shape(comp, "rect", [W * 1.2, bh + 4], {fill: bc, pos: [W / 2, bh / 2 - 2], name: "bar top"}),
+                      MV.shape(comp, "rect", [W * 1.2, bh + 4], {fill: bc, pos: [W / 2, H - bh / 2 + 2], name: "bar bottom"})];
+            } else bs = MV.bars(comp, T(f.bars), f.band || 420, {dur: f.dur});
             MV.spanAll(bs, T(f.bars), f.out !== undefined ? T(f.out) : z);
             return bs;
+        }
+        if (f.drops !== undefined) {
+            var dts = f.drops instanceof Array ? f.drops : [f.drops], rr = [], ar = f.area || [W * 0.12, H * 0.55, W * 0.88, H * 0.95];
+            for (var d = 0; d < dts.length; d++) {
+                var dp = f.pos ? (f.pos[0] instanceof Array ? f.pos[d % f.pos.length] : f.pos) : [MV.rand(ar[0], ar[2]), MV.rand(ar[1], ar[3])];
+                rr = rr.concat(MV.drop(comp, T(dts[d]), dp, {rings: f.rings, size: f.size, color: col(f.color), squash: f.squash, dur: f.dur,
+                                                            width: f.width, gap: f.gap, peak: f.peak}));
+            }
+            return rr;
+        }
+        if (f.box !== undefined) {
+            var bx = MV.box(comp, T(f.box), f.pos, f.size, {color: col(f.color || "#0b1220"), opacity: f.opacity, dur: f.dur,
+                                                             vertical: f.vertical, wipe: f.wipe});
+            spanRange(bx, T(f.box), f.out !== undefined ? T(f.out) : z);
+            return bx;
         }
         if (f.black) { var bl = MV.solid(comp, [0, 0, 0], "black"); spanRange(bl, T(f.black[0]), T(f.black[1])); return bl; }
         if (f.rule !== undefined) {
@@ -191,24 +298,42 @@
         throw new Error("unknown fx: " + mvJSON(f));
     }
 
+    var QA = [];
     for (var s = 0; s < P.shots.length; s++) {
         var S = P.shots[s], a = T(S.t0), z = T(S.t1);
         MV._seed = 1000 + s * 7919;                 // stable random layout per shot
         if (S.bg) buildBg(S.bg, a, z);
         for (var g = 0; S.bgs && g < S.bgs.length; g++) buildBg(S.bgs[g], a, z);
         var charL = S.char ? buildChar(S.char, a, z) : null;
-        // bars and frames sit under the lyrics; flashes, bursts, rings and black frames go on top of everything
-        var under = function (f) { return f.bars !== undefined || f.frame !== undefined || f.under; };
+        var cutL = S.cut && S.bg ? buildCut(S.bg, S.cut, S.cutDim, a, z) : null, fg = cutL || charL;
+        // bars, frames, drops and boxes sit under the lyrics; flashes, bursts, rings and black frames go on top of everything
+        var under = function (f) { return f.bars !== undefined || f.frame !== undefined || f.drops !== undefined || f.box !== undefined || f.under; };
         for (var u = 0; S.fx && u < S.fx.length; u++) if (under(S.fx[u])) buildFx(S.fx[u], a, z);
         for (var i = 0; S.texts && i < S.texts.length; i++) {
             var x = S.texts[i], xa = x.tIn !== undefined ? T(x.tIn) : a, xz = x.tOut !== undefined ? T(x.tOut) : z;
-            var before = comp.numLayers;
-            if (x.mode === "chars" || x.mode === "vchars") buildChars(x, xa, xz);
-            else buildLine(x, xa, xz);
-            if (x.behind && charL) {          // new layers sit at the top (index 1..n); move them, in order, under the character
-                var made = [], n = comp.numLayers - before;
-                for (var q = 1; q <= n; q++) made.push(comp.layer(q));
-                for (q = 0; q < made.length; q++) made[q].moveAfter(q ? made[q - 1] : charL);
+            var before = comp.numLayers, groups, imageText = false, ts = settle(x, xa, xz);
+            if (x.mode === "chars" || x.mode === "vchars") {
+                var chs = buildChars(x, xa, xz);
+                groups = x.mode === "vchars" ? columns(chs, ts, x.size || 90) : [chs];
+            } else {
+                var bl = buildLine(x, xa, xz);
+                groups = [[bl.text]];
+                imageText = bl.vis !== bl.text;
+            }
+            var made = [], n = comp.numLayers - before;          // new layers sit at the top (index 1..n)
+            for (var q = 1; q <= n; q++) made.push(comp.layer(q));
+            if (x.behind && fg) for (q = 0; q < made.length; q++) made[q].moveAfter(q ? made[q - 1] : fg);
+            var pl = pick(x, "plate", null);
+            if (pl && typeof pl === "string") pl = {kind: pl};
+            if (pl && !(pl.kind === "halo" && imageText))
+                MV.plate(comp, groups, ts, {kind: pl.kind, color: col(pl.color), opacity: pl.opacity, pad: pl.pad, dur: pl.dur, soft: pl.soft,
+                                            wipe: pl.wipe, size: x.size || 120});
+            if (P.qa && x.qa !== false) {
+                var shown = [];
+                for (q = 0; q < made.length; q++) if (made[q].enabled) shown.push(made[q]);
+                QA.push({layers: shown, t: ts, shot: s + 1, text: i + 1, label: x.name || x.text, plate: pl ? pl.kind : null,
+                         size: x.size || 120, mode: x.mode || "line", fill: imageText ? null : (x.fill === undefined ? "#ffffff" : x.fill),
+                         stroke: x.stroke || null});
             }
         }
         for (i = 0; S.fx && i < S.fx.length; i++) if (!under(S.fx[i])) buildFx(S.fx[i], a, z);
@@ -216,9 +341,13 @@
     }
 
     if (P.finish) {
-        if (P.finish.wash) MV.wash(comp, col(P.finish.wash.color), P.finish.wash.amount);
-        if (P.finish.vignette) MV.vignette(comp, P.finish.vignette, P.finish.feather);
-        if (P.finish.grade) MV.grade(comp, P.finish.grade);
+        var F = P.finish;
+        if (F.tone) MV.tone(comp, {hi: col(F.tone.hi), mid: col(F.tone.mid), lo: col(F.tone.lo), mix: F.tone.mix});
+        if (F.unify) MV.unify(comp, {keep: col(F.unify.keep), amount: F.unify.amount, tol: F.unify.tol, soft: F.unify.soft,
+                                     hue: F.unify.hue, sat: F.unify.sat});
+        if (F.wash) MV.wash(comp, col(F.wash.color), F.wash.amount);
+        if (F.vignette) MV.vignette(comp, F.vignette, F.feather);
+        if (F.grade) MV.grade(comp, F.grade);
     }
 
     var res = {fonts: fontLog, layers: comp.numLayers, stills: []};
@@ -226,6 +355,30 @@
     for (i = 0; P.stills && i < P.stills.length; i++) {
         var st = P.stills[i], nm = "still_" + (i < 9 ? "0" : "") + (i + 1) + "_" + String(st).replace(".", "s") + ".png";
         res.stills.push(MV.still(comp, T(st), out(nm)));
+    }
+    if (P.qa && QA.length) {          // contrast check: each lyric with and without its own layers, at its settled time
+        var qj = [];
+        for (i = 0; i < QA.length; i++) {
+            var e = QA[i], id = ("00" + (i + 1)).slice(-3);
+            MV.still(comp, e.t, out("qa_" + id + "_on.png"));
+            for (q = 0; q < e.layers.length; q++) e.layers[q].enabled = false;
+            MV.still(comp, e.t, out("qa_" + id + "_off.png"));
+            // solo: only this lyric over a magenta key, so the check knows every letter, including ones a picture hides
+            var was = [];
+            for (var li = 1; li <= comp.numLayers; li++) { var LL = comp.layer(li); was.push(LL.enabled); try { LL.enabled = false; } catch (er) {} }
+            for (q = 0; q < e.layers.length; q++) e.layers[q].enabled = true;
+            var key = MV.solid(comp, [1, 0, 1], "qa key");
+            key.moveToEnd();
+            MV.still(comp, e.t, out("qa_" + id + "_solo.png"));
+            key.remove();
+            for (li = 1; li <= comp.numLayers; li++) { try { comp.layer(li).enabled = was[li - 1]; } catch (er) {} }
+            qj.push({id: id, shot: e.shot, text: e.text, label: e.label, t: Math.round((e.t + OFF) * 100) / 100, plate: e.plate,
+                     size: e.size, mode: e.mode, fill: e.fill, stroke: e.stroke});
+        }
+        var qf = new File(out("qa.json"));
+        qf.encoding = "UTF-8"; qf.open("w"); qf.write(mvJSON({w: W, h: H, items: qj})); qf.close();
+        res.qa = qj.length;
+        if (P.save) MV.save(out(P.save));       // the switching above leaves the project marked as changed
     }
     if (P.render) {
         var r = MV.addRender(comp, out(comp.name + (P.render === "h264" ? ".mp4" : "")), P.render);

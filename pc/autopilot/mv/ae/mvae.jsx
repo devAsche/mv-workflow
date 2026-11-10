@@ -249,6 +249,13 @@ MV.still = function (comp, t, path) {   // one frame to PNG (for quick checks, n
     if (!f.parent.exists) f.parent.create();
     comp.saveFrameToPng(t, f);
     if (!MV.waitFile(path, 60)) throw new Error("frame not written: " + path);
+    var last = -1, same = 0;
+    for (var i = 0; i < 50 && same < 2; i++) {          // the file can appear before AE has finished writing it
+        var n = new File(path).length;
+        if (n > 0 && n === last) same++; else same = 0;
+        last = n;
+        $.sleep(100);
+    }
     return f.fsName;
 };
 
@@ -870,5 +877,242 @@ MV.wash = function (comp, color, amount) {
     var L = MV.solid(comp, color, "wash");
     L.blendingMode = BlendingMode.SOFT_LIGHT;
     MV.tr(L, "opacity").setValue(amount || 25);
+    return L;
+};
+
+// ================================================================ v1.8: readable lyrics, views of one picture, rain, one palette, checks
+// From the learning notes (2026-11-11): lyrics on strips or boxes so any background reads; one picture shown many ways
+// (a crop on a detail, flipped, tilted, in rows, small in a frame, through a shape, inside a silhouette); ripples for rain;
+// one palette over every cut; and still pairs for an automatic contrast check (tools/qa_contrast.py).
+
+// comp-space box [x0, y0, x1, y1] around layers at time t (ignores rotation)
+MV.bounds = function (layers, t) {
+    var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (var i = 0; i < layers.length; i++) {
+        var L = layers[i], r = L.sourceRectAtTime(t, false);
+        if (!r || r.width <= 0 || r.height <= 0) continue;
+        var p = MV.tr(L, "position").valueAtTime(t, false), a = MV.tr(L, "anchor").valueAtTime(t, false);
+        var s = MV.tr(L, "scale").valueAtTime(t, false), sx = s[0] / 100, sy = s[1] / 100;
+        var xa = p[0] + (r.left - a[0]) * sx, xb = p[0] + (r.left + r.width - a[0]) * sx;
+        var ya = p[1] + (r.top - a[1]) * sy, yb = p[1] + (r.top + r.height - a[1]) * sy;
+        x0 = Math.min(x0, xa, xb); x1 = Math.max(x1, xa, xb); y0 = Math.min(y0, ya, yb); y1 = Math.max(y1, ya, yb);
+    }
+    return x1 < x0 ? null : [x0, y0, x1, y1];
+};
+
+// shape layer in one of three outlines: "rect", "ellipse" (or "circle") or "eye" (two arcs meeting in points)
+MV.pathShape = function (comp, kind, size, o) {
+    o = o || {};
+    if (kind !== "eye") return MV.shape(comp, kind === "rect" ? "rect" : "ellipse", size, o);
+    var L = comp.layers.addShape();
+    var v = L.property("ADBE Root Vectors Group").addProperty("ADBE Vector Group").property("ADBE Vectors Group");
+    var s = new Shape(), w = size[0], h = size[1], hx = w * 0.3, hy = h * 0.667;
+    s.vertices = [[-w / 2, 0], [w / 2, 0]];
+    s.outTangents = [[hx, -hy], [-hx, hy]];
+    s.inTangents = [[hx, hy], [-hx, -hy]];
+    s.closed = true;
+    v.addProperty("ADBE Vector Shape - Group").property("ADBE Vector Shape").setValue(s);
+    if (o.stroke) {
+        var st = v.addProperty("ADBE Vector Graphic - Stroke");
+        st.property("ADBE Vector Stroke Color").setValue(o.stroke);
+        st.property("ADBE Vector Stroke Width").setValue(o.strokeWidth || 8);
+    }
+    if (o.fill) v.addProperty("ADBE Vector Graphic - Fill").property("ADBE Vector Fill Color").setValue(o.fill);
+    MV.tr(L, "position").setValue(o.pos || [comp.width / 2, comp.height / 2]);
+    if (o.name) L.name = o.name;
+    return L;
+};
+
+// 読ませる入れ物 under lyrics. groups: [[layers], ...] (one group per line or vertical column); t: a time when the letters
+// have settled (their size is read then). o.kind: "strip" (a band behind each group), "box" (one box around every group),
+// "scrim" (a soft dark patch), "halo" (a dark glow on the letters themselves). o: {color, opacity, pad, dur, wipe, size, soft}
+MV.plate = function (comp, groups, t, o) {
+    o = o || {};
+    var kind = o.kind || "strip", made = [], g, i;
+    if (kind === "halo") {            // two dark glows: a tight one that outlines the letters and a wide soft one
+        var sz = o.size || 100, hc = (o.color || [0, 0, 0]).concat([1]), k = (o.opacity || 100) / 100;
+        for (g = 0; g < groups.length; g++) for (i = 0; i < groups[g].length; i++) {
+            MV.fx(groups[g][i], "ADBE Drop Shadow", {"ADBE Drop Shadow-0001": hc, "ADBE Drop Shadow-0002": 255 * k,
+                  "ADBE Drop Shadow-0004": 0, "ADBE Drop Shadow-0005": o.soft || Math.round(sz * 0.12)});
+            MV.fx(groups[g][i], "ADBE Drop Shadow", {"ADBE Drop Shadow-0001": hc, "ADBE Drop Shadow-0002": 200 * k,
+                  "ADBE Drop Shadow-0004": 0, "ADBE Drop Shadow-0005": Math.round((o.soft || sz * 0.12) * 4)});
+        }
+        return made;
+    }
+    if (kind !== "strip") {
+        var all = [];
+        for (g = 0; g < groups.length; g++) all = all.concat(groups[g]);
+        groups = [all];
+    }
+    for (g = 0; g < groups.length; g++) {
+        var Ls = groups[g], b = MV.bounds(Ls, t);
+        if (!b) continue;
+        var w = b[2] - b[0], h = b[3] - b[1], horiz = w >= h, sh = Math.min(w, h);
+        var p = o.pad !== undefined ? o.pad : Math.round(sh * (kind === "strip" ? 0.3 : 0.55));
+        var along = kind === "strip" ? Math.round(p * 1.8) : p;
+        var bw = w + 2 * (horiz ? along : p), bh = h + 2 * (horiz ? p : along), cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, P, op;
+        if (kind === "scrim") {
+            P = MV.solid(comp, o.color || [0, 0, 0], "plate scrim");
+            var fe = Math.max(bw, bh) * 0.22;
+            MV.rectMask(P, cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2).property("ADBE Mask Feather").setValue([fe, fe]);
+            op = o.opacity || 60;
+        } else {
+            P = MV.shape(comp, "rect", [bw, bh], {fill: o.color || [0, 0, 0], pos: [cx, cy], name: "plate " + kind});
+            op = o.opacity || (kind === "strip" ? 88 : 75);
+        }
+        var tin = 1e9, tout = -1e9;
+        for (i = 0; i < Ls.length; i++) { tin = Math.min(tin, Ls[i].inPoint); tout = Math.max(tout, Ls[i].outPoint); }
+        MV.span(P, tin, tout);
+        MV.tr(P, "opacity").setValue(op);
+        if (kind === "strip" && o.wipe !== false) MV.keys(MV.tr(P, "scale"), [[tin, horiz ? [0, 100] : [100, 0]], [tin + (o.dur || 0.2), [100, 100]]], "out");
+        else MV.keys(MV.tr(P, "opacity"), [[tin, 0], [tin + (o.dur || 0.25), op]], "out");
+        var low = Ls[0];
+        for (i = 1; i < Ls.length; i++) if (Ls[i].index > low.index) low = Ls[i];
+        P.moveAfter(low);
+        made.push(P);
+    }
+    return made;
+};
+
+// どこを見せるか: the layer position that puts source pixel f at screen point s (default: centre) at scale k%,
+// clamped so the picture still covers the frame unless noClamp
+MV.focusPos = function (L, k, f, s, noClamp) {
+    var c = L.containingComp, a = MV.tr(L, "anchor").value, sc = k / 100;
+    s = s || [c.width / 2, c.height / 2];
+    var x = s[0] - (f[0] - a[0]) * sc, y = s[1] - (f[1] - a[1]) * sc;
+    if (!noClamp) {
+        x = Math.min(a[0] * sc, Math.max(c.width - (L.source.width - a[0]) * sc, x));
+        y = Math.min(a[1] * sc, Math.max(c.height - (L.source.height - a[1]) * sc, y));
+    }
+    return [x, y];
+};
+
+// 左右反転 about a source point (default: the layer's anchor), as an effect so scale keys and punches keep working
+MV.flip = function (L, about) {
+    var a = about || MV.tr(L, "anchor").value, c = [a[0], a[1]];
+    return MV.fx(L, "ADBE Geometry2", {"ADBE Geometry2-0001": c, "ADBE Geometry2-0002": c, "ADBE Geometry2-0011": 0, "ADBE Geometry2-0004": -100});
+};
+MV.negative = function (L) { return MV.fx(L, "ADBE Invert"); };
+// palette swap / palette lock: highlights, midtones and shadows mapped to three colours; blend = % of the original kept
+MV.tritone = function (L, hi, mid, lo, blend) {
+    return MV.fx(L, "ADBE Tritone", {"ADBE Tritone-0001": hi.concat([1]), "ADBE Tritone-0002": mid.concat([1]),
+                                       "ADBE Tritone-0003": lo.concat([1]), "ADBE Tritone-0004": blend || 0});
+};
+// カラーバランス (HLS): [hue degrees, lightness, saturation]
+MV.hls = function (L, v) {
+    return MV.fx(L, "ADBE Color Balance (HLS)", {"ADBE Color Balance (HLS)-0001": v[0] || 0, "ADBE Color Balance (HLS)-0002": v[1] || 0,
+                                                  "ADBE Color Balance (HLS)-0003": v[2] || 0});
+};
+
+// 大量作成・隊列移動 (モーションタイル): cols x rows copies; o: {mirror, phase, slide: [px/s, px/s]}
+MV.tile = function (L, cols, rows, o) {
+    o = o || {};
+    var e = MV.fx(L, "ADBE Tile", {"ADBE Tile-0002": 100 / (cols || 3), "ADBE Tile-0003": 100 / (rows || cols || 3),
+                                     "ADBE Tile-0006": o.mirror ? 1 : 0, "ADBE Tile-0007": o.phase || 0});
+    if (o.slide) MV.expr(MV.findProp(e, "ADBE Tile-0001"), "value + [" + o.slide[0] + ", " + (o.slide[1] || 0) + "] * time");
+    return e;
+};
+
+// 四隅オブジェクト: two mirrors (the technique song's settings, scaled from a 1920x1080 layer to this one)
+MV.mirror4 = function (L) {
+    var w = L.source.width, h = L.source.height;
+    MV.fx(L, "ADBE Mirror", {"ADBE Mirror-0001": [w, h / 2], "ADBE Mirror-0002": 90});
+    return MV.fx(L, "ADBE Mirror", {"ADBE Mirror-0001": [w / 2, h / 2], "ADBE Mirror-0002": 0});
+};
+
+// 波紋の呼吸: AE's Ripple on a picture, phase = time * speed. o: {c: [x, y] layer px, r, w, h, speed, second: true adds a gentler
+// ripple of the other type}
+MV.ripple = function (L, o) {
+    o = o || {};
+    var cc = L.containingComp, c = o.c || [cc.width / 2, cc.height / 2], sp = o.speed || 180;
+    var e = MV.fx(L, "ADBE Ripple", {"ADBE Ripple-0001": o.r || 40, "ADBE Ripple-0002": c, "ADBE Ripple-0005": o.w || 30, "ADBE Ripple-0006": o.h || 12});
+    MV.expr(MV.findProp(e, "ADBE Ripple-0007"), "time * " + sp);
+    if (o.second) {
+        var e2 = MV.fx(L, "ADBE Ripple", {"ADBE Ripple-0001": (o.r || 40) * 0.6, "ADBE Ripple-0002": [c[0] * 0.7, c[1] * 1.05],
+                                            "ADBE Ripple-0003": 2, "ADBE Ripple-0005": (o.w || 30) * 1.6, "ADBE Ripple-0006": (o.h || 12) * 0.5});
+        MV.expr(MV.findProp(e2, "ADBE Ripple-0007"), "time * " + (sp * 0.7));
+    }
+    return e;
+};
+
+// 雨粒の輪: thin rings opening flat (as on a puddle) from pos, one after another
+MV.drop = function (comp, t, pos, o) {
+    o = o || {};
+    var n = o.rings || 3, size = o.size || 300, dur = o.dur || 1.1, sq = o.squash || 0.33, out = [];
+    for (var i = 0; i < n; i++) {
+        var ti = t + i * (o.gap || 0.13), k = 100 - i * 22;
+        var L = MV.shape(comp, "ellipse", [size, size], {stroke: o.color || [1, 1, 1], strokeWidth: o.width || 3, pos: pos, name: "drop ring"});
+        MV.span(L, ti, ti + dur);
+        MV.keys(MV.tr(L, "scale"), [[ti, [6, 6 * sq]], [ti + dur, [k, k * sq]]], "out");
+        MV.keys(MV.tr(L, "opacity"), [[ti, o.peak || 85], [ti + dur, 0]], "in");
+        out.push(L);
+    }
+    return out;
+};
+
+// 余白に小さく置く / 目の形の窓: the picture shows only inside a shape. Returns {matte, border}
+MV.windowOn = function (comp, L, kind, size, pos, o) {
+    o = o || {};
+    var m = MV.pathShape(comp, kind, size, {fill: [1, 1, 1], pos: pos, name: "window " + L.name});
+    MV.span(m, L.inPoint, L.outPoint);
+    m.moveBefore(L);
+    MV.matte(L, m, "alpha");
+    m.enabled = false;
+    var out = {matte: m};
+    if (o.border) {
+        var bd = MV.pathShape(comp, kind, size, {stroke: o.border, strokeWidth: o.width || 6, pos: pos, name: "window border"});
+        MV.span(bd, L.inPoint, L.outPoint);
+        bd.moveBefore(L);
+        out.border = bd;
+    }
+    return out;
+};
+
+// シルエットの中に別の絵: L shows only inside the alpha of a cut-out PNG. o: {h, pos, rim: colour drawn just outside}
+MV.insideOf = function (comp, L, cutPath, o) {
+    o = o || {};
+    var pos = o.pos || [comp.width / 2, comp.height / 2];
+    var cut = MV.layerFrom(comp, cutPath, {fit: "height", h: o.h || 0.9, pos: pos, name: "silhouette matte"});
+    MV.span(cut, L.inPoint, L.outPoint);
+    cut.moveBefore(L);
+    MV.matte(L, cut, "alpha");
+    cut.enabled = false;
+    if (o.rim) {
+        var rim = MV.layerFrom(comp, cutPath, {fit: "height", h: (o.h || 0.9) * 1.015, pos: pos, name: "silhouette rim"});
+        MV.span(rim, L.inPoint, L.outPoint);
+        MV.silhouette(rim, o.rim);
+        rim.moveAfter(L);
+    }
+    return cut;
+};
+
+// a plain panel under a lyric at a given place (fx.box): it opens sideways (or downwards when vertical)
+MV.box = function (comp, t, pos, size, o) {
+    o = o || {};
+    var L = MV.shape(comp, "rect", size || [600, 120], {fill: o.color || MV.hex("#0b1220"), pos: pos, name: "box"});
+    var op = o.opacity !== undefined ? o.opacity : 80;
+    MV.tr(L, "opacity").setValue(op);
+    if (o.wipe === false) MV.keys(MV.tr(L, "opacity"), [[t, 0], [t + (o.dur || 0.25), op]], "out");
+    else MV.keys(MV.tr(L, "scale"), [[t, o.vertical ? [100, 0] : [0, 100]], [t + (o.dur || 0.25), [100, 100]]], "out");
+    return L;
+};
+
+// 色の統一: everything except one hue goes grey on an adjustment layer; then an optional hue turn.
+// o: {keep: colour, amount (% of colour removed), tol, soft, hue, sat}
+MV.unify = function (comp, o) {
+    o = o || {};
+    var L = MV.adjust(comp, "unify");
+    MV.fx(L, "ADBE Leave Color", {"ADBE Leave Color-0001": o.amount !== undefined ? o.amount : 85,
+                                   "ADBE Leave Color-0002": (o.keep || MV.hex("#e6d43c")).concat([1]),
+                                   "ADBE Leave Color-0003": o.tol || 22, "ADBE Leave Color-0004": o.soft || 25,
+                                   "ADBE Leave Color-0005": 2});       // match colours by hue
+    if (o.hue) MV.hls(L, [o.hue, 0, o.sat || 0]);
+    return L;
+};
+
+// finishing palette lock on an adjustment layer (mix = % of the three-colour map)
+MV.tone = function (comp, o) {
+    var L = MV.adjust(comp, "tone");
+    MV.tritone(L, o.hi || [0.96, 0.95, 0.9], o.mid || [0.36, 0.42, 0.55], o.lo || [0.03, 0.04, 0.09], 100 - (o.mix === undefined ? 35 : o.mix));
     return L;
 };
