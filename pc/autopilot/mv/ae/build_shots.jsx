@@ -5,22 +5,27 @@
 //   name: "MV_test", w: 1920, h: 1080, fps: 30, dur: 23.6,
 //   offset: 53.6,                 // song time at comp time 0; every time below is song time
 //   audio: "C:\\...\\song.wav",
-//   fonts: {mincho: ["NewTegomin-Regular", ...], gothic: [...]},   // first installed one wins
+//   fonts: {main: ["GenEiKoburiMin6-R", ...], latin: [...]},   // first installed one wins
+//   type: {font: "main", hscale: 0.8, kana: 0.84, skew: 0, tracking: 0},   // defaults for every lyric (one typeface per song)
 //   shots: [{t0, t1, bg: {...}, char: {...}, texts: [...], fx: [...]}, ...],
 //   finish: {grade: {...}, vignette: 45},
 //   stills: [song times], save: "name.aep", render: "h264" | "tiff" | null
 // }
 // bg:    {img | solid, extra, move: [[t, scale%, [x, y]]...], ease, punch: {t, big, dur}, mono: {tint, amount}, keep, keepTol,
 //         blur, dim, blinds: {t, dur, angle, width}, mosaic: {t, dur, from}, jolt: [t0, t1, amp], kira: t}
-// char:  {img, h, pos, tIn, slam: {t, from, dur}, hops: [t...], hop: px, echo: {color, offset}, jolt: [t0, t1, amp]}
+// bgs:   [bg, ...] with tIn/tOut each, when one shot changes its background
+// char:  {img, h, pos, tIn, slam: {t, from, dur}, move: [[t, scale%]...], hops: [t...], hop: px, echo: {color, offset}, jolt: [t0, t1, amp]}
 // texts: {text, font, size, pos, fill, stroke, strokeWidth, tIn, tOut,
 //         mode: "line" | "chars" | "vchars",
 //         line:   words: [[text, start, end]...] (reveal word by word; popPct makes each word grow in), punch: {t, big}, open: {t, from, to, dur}, hop: {t, dur, h},
 //                 rgb: [t0, t1], strobe: [t0, t1], kira: t, turb: [t0, t1, amount], rough: true,
 //                 image: {img, strobe: [t0, t1], kira: t, jolt: [t0, t1, amp], outline: color}, opacity, grow: [from%, to%]
-//         chars:  words (each character appears at its time), pop, drop, scatter: {t, dur, dist}, crumble: {t, dur}, x/top (vchars)}
+//         chars:  words (each character appears at its time), pop, stretch, drop, smear: {dur, angle, len}, strobe: [t0, t1],
+//                 scatter: {t, dur, dist}, crumble: {t, dur}, x/top (vchars)}
+//         both:   hscale, vscale, kana, skew (shape of the type), slice: [{t, shift, frac, dur}], stretchAt: [t, k], behind: true
+//                 (placed under the character cut-out)
 // fx:    {flash: t, color, dur, peak} | {burst: t, colors, pos, stroke} | {ring: t, pos, size, color, dur} |
-//        {frame: t, size, pos, color, width} | {bars: t, band, out} | {black: [t0, t1]}
+//        {frame: t, size, pos, color, width} | {bars: t, band, out} | {black: [t0, t1]} | {rule: t, pos, len, vertical, color, width, dur}
 //        (bars, frames and any fx with under: true are placed below the lyrics; the rest above)
 
 (function () {
@@ -51,7 +56,7 @@
         var L;
         if (b.solid) L = MV.solid(comp, col(b.solid), "bg");
         else L = MV.layerFrom(comp, b.img, {fit: "cover", extra: b.extra || 1.12, name: "bg " + b.img.replace(/^.*[\\\/]/, "")});
-        spanRange(L, a, z);
+        spanRange(L, b.tIn !== undefined ? T(b.tIn) : a, b.tOut !== undefined ? T(b.tOut) : z);
         if (b.mono) MV.mono(L, col(b.mono.tint), b.mono.amount);
         if (b.keep) MV.keepColor(L, col(b.keep), b.keepTol);
         if (b.blur) MV.blurFx(L, b.blur);
@@ -74,16 +79,31 @@
         var L = MV.layerFrom(comp, c.img, {fit: "height", h: c.h || 0.92, pos: c.pos || [W * 0.68, H * 0.55], name: "char"});
         spanRange(L, c.tIn !== undefined ? T(c.tIn) : a, z);
         if (c.slam) MV.slam(L, T(c.slam.t), c.slam.from || "right", c.slam.dur || 0.3);
+        if (c.move) {
+            var base = MV.tr(L, "scale").value[0], m = [];
+            for (var j = 0; j < c.move.length; j++) m.push([T(c.move[j][0]), [base * c.move[j][1] / 100, base * c.move[j][1] / 100]]);
+            MV.keys(MV.tr(L, "scale"), m, c.ease || "inout");
+        }
         if (c.hops) for (var i = 0; i < c.hops.length; i++) MV.bounce(L, T(c.hops[i]), 0.3, c.hop || 60);
         if (c.jolt) MV.jolt(L, T(c.jolt[0]), T(c.jolt[1]), 20, c.jolt[2] || 15);
         if (c.echo) { var e = MV.echo(L, col(c.echo.color || "#ffd400"), c.echo.offset); spanRange(e, L.inPoint, z); }
         return L;
     }
 
+    var TY = P.type || {};
+    function pick(x, k, dflt) { return x[k] !== undefined ? x[k] : (TY[k] !== undefined ? TY[k] : dflt); }
     function textOpts(x) {
-        return {font: font(x.font), size: x.size || 120, fill: x.fill === null ? null : col(x.fill || "#ffffff"),
-                stroke: col(x.stroke), strokeWidth: x.strokeWidth, pos: x.pos, tracking: x.tracking, name: x.name || x.text,
+        return {font: font(pick(x, "font", null)), size: x.size || 120, fill: x.fill === null ? null : col(x.fill || "#ffffff"),
+                stroke: col(x.stroke), strokeWidth: x.strokeWidth, pos: x.pos, tracking: pick(x, "tracking", 0), name: x.name || x.text,
+                hscale: pick(x, "hscale", 1), vscale: x.vscale, kana: pick(x, "kana", 1), skew: pick(x, "skew", 0),
                 x: x.x, top: x.top, gap: x.gap, colGap: x.colGap};
+    }
+    function slices(list, x) {          // one slice per lyric (a second mask would add to the first); returns the lower halves
+        var extra = [];
+        if (!x.slice || !x.slice.length) return extra;
+        var sl = x.slice[0];
+        for (var r = 0; r < list.length; r++) extra.push(MV.slice(list[r], T(sl.t), {shift: sl.shift, frac: sl.frac, dur: sl.dur})[1]);
+        return extra;
     }
 
     function buildLine(x, a, z) {
@@ -98,6 +118,7 @@
             MV.typeWords(L, w, {pop: x.popPct});
         }
         if (x.grow) MV.keys(MV.tr(L, "scale"), [[a, [x.grow[0], x.grow[0]]], [z, [x.grow[1], x.grow[1]]]], "linear");
+        if (x.stretchAt) MV.stretch(L, T(x.stretchAt[0]), x.stretchAt[1], x.stretchAt[2]);
         if (x.punch) MV.punch(L, T(x.punch.t), x.punch.big || 300, x.punch.dur || 0.15);
         if (x.open) MV.openText(L, T(x.open.t), x.open.from, x.open.to, x.open.dur);
         if (x.hop) MV.hop(L, T(x.hop.t), x.hop.dur, x.hop.h);
@@ -122,6 +143,7 @@
         } else if (x.rgb) MV.rgbSplit(L, T(x.rgb[0]), T(x.rgb[1]), 14);
         if (x.strobe && !x.image) MV.strobe(L, T(x.strobe[0]), T(x.strobe[1]), 2);
         if (x.kira !== undefined && !x.image) MV.kira(L, T(x.kira), 5);
+        slices([L], x);
         return vis;
     }
 
@@ -133,8 +155,12 @@
         if (x.words) {
             var times = MV.charTimes(x.words);
             for (var i = 0; i < times.length; i++) times[i] = T(times[i]);
-            MV.charsAt(chars, times, {pop: x.pop || 1.4, drop: x.drop, dur: x.popDur});
+            MV.charsAt(chars, times, {pop: x.pop || 1.4, stretch: x.stretch, drop: x.drop, dur: x.popDur});
+            if (x.smear) for (var m = 0; m < chars.length; m++)
+                MV.smear(chars[m], times[Math.min(m, times.length - 1)], x.smear.dur, x.smear.angle, x.smear.len);
         }
+        if (x.strobe) for (var sb = 0; sb < chars.length; sb++) MV.strobe(chars[sb], T(x.strobe[0]), T(x.strobe[1]), 2);
+        chars = chars.concat(slices(chars, x));
         if (x.scatter) MV.scatterIn(chars, T(x.scatter.t), {dur: x.scatter.dur, dist: x.scatter.dist, order: x.scatter.order});
         if (x.crumble) MV.crumbleOut(chars, T(x.crumble.t), {dur: x.crumble.dur, spread: x.crumble.spread});
         if (x.hopAt) for (var h = 0; h < chars.length; h++) MV.bounce(chars[h], T(x.hopAt) + h * 0.05, 0.3, x.hopH || 40);
@@ -157,6 +183,11 @@
             return bs;
         }
         if (f.black) { var bl = MV.solid(comp, [0, 0, 0], "black"); spanRange(bl, T(f.black[0]), T(f.black[1])); return bl; }
+        if (f.rule !== undefined) {
+            var ru = MV.rule(comp, T(f.rule), f.pos, f.len || 400, f.vertical, col(f.color || "#ffd400"), f.width, f.dur);
+            spanRange(ru, T(f.rule), f.out !== undefined ? T(f.out) : z);
+            return ru;
+        }
         throw new Error("unknown fx: " + mvJSON(f));
     }
 
@@ -164,20 +195,28 @@
         var S = P.shots[s], a = T(S.t0), z = T(S.t1);
         MV._seed = 1000 + s * 7919;                 // stable random layout per shot
         if (S.bg) buildBg(S.bg, a, z);
-        if (S.char) buildChar(S.char, a, z);
+        for (var g = 0; S.bgs && g < S.bgs.length; g++) buildBg(S.bgs[g], a, z);
+        var charL = S.char ? buildChar(S.char, a, z) : null;
         // bars and frames sit under the lyrics; flashes, bursts, rings and black frames go on top of everything
         var under = function (f) { return f.bars !== undefined || f.frame !== undefined || f.under; };
         for (var u = 0; S.fx && u < S.fx.length; u++) if (under(S.fx[u])) buildFx(S.fx[u], a, z);
         for (var i = 0; S.texts && i < S.texts.length; i++) {
             var x = S.texts[i], xa = x.tIn !== undefined ? T(x.tIn) : a, xz = x.tOut !== undefined ? T(x.tOut) : z;
+            var before = comp.numLayers;
             if (x.mode === "chars" || x.mode === "vchars") buildChars(x, xa, xz);
             else buildLine(x, xa, xz);
+            if (x.behind && charL) {          // new layers sit at the top (index 1..n); move them, in order, under the character
+                var made = [], n = comp.numLayers - before;
+                for (var q = 1; q <= n; q++) made.push(comp.layer(q));
+                for (q = 0; q < made.length; q++) made[q].moveAfter(q ? made[q - 1] : charL);
+            }
         }
         for (i = 0; S.fx && i < S.fx.length; i++) if (!under(S.fx[i])) buildFx(S.fx[i], a, z);
         mvlog("shot " + (s + 1) + " " + S.t0 + "-" + S.t1 + " done, layers " + comp.numLayers);
     }
 
     if (P.finish) {
+        if (P.finish.wash) MV.wash(comp, col(P.finish.wash.color), P.finish.wash.amount);
         if (P.finish.vignette) MV.vignette(comp, P.finish.vignette, P.finish.feather);
         if (P.finish.grade) MV.grade(comp, P.finish.grade);
     }

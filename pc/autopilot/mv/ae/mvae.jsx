@@ -101,12 +101,12 @@ MV.text = function (comp, str, o) {
     if (o.stroke) { d.applyStroke = true; d.strokeColor = o.stroke; d.strokeWidth = o.strokeWidth || 4; d.strokeOverFill = false; }
     if (o.tracking !== undefined) d.tracking = o.tracking;
     if (o.leading) { d.autoLeading = false; d.leading = o.leading; }
-    if (o.hscale) d.horizontalScale = o.hscale;          // 文字幅 (1 = 100%)
-    if (o.vscale) d.verticalScale = o.vscale;
     if (o.justify) d.justification = o.justify;          // ParagraphJustification.CENTER_JUSTIFY etc.
     else d.justification = ParagraphJustification.CENTER_JUSTIFY;
     if (o.vertical) { try { d.lineOrientation = LineOrientation.VERTICAL_RIGHT_TO_LEFT; } catch (e) {} }
     tp.setValue(d);
+    if ((o.hscale && o.hscale !== 1) || (o.vscale && o.vscale !== 1)) MV.setTypeScale(L, o.hscale || 1, o.vscale || 1);
+    if (o.skew) MV.animator(L, {skew: o.skew}, {});
     if (!o.noCenter) MV.centerAnchor(L);
     var tr = L.property("ADBE Transform Group");
     tr.property("ADBE Position").setValue(o.pos || [comp.width / 2, comp.height / 2]);
@@ -429,25 +429,38 @@ MV.rand = function (lo, hi) {          // small seeded generator, so a rebuild g
 
 MV.splitText = function (comp, str, o) {
     o = o || {};
-    var size = o.size || 160, chars = [], widths = [0];
-    var tmp = MV.text(comp, str.charAt(0), {font: o.font, size: size, tracking: o.tracking, justify: ParagraphJustification.LEFT_JUSTIFY, noCenter: true});
-    var tp = tmp.property("ADBE Text Properties").property("ADBE Text Document");
-    for (var i = 1; i <= str.length; i++) {
-        var d = tp.value; d.text = str.substr(0, i); tp.setValue(d);
-        var r = tmp.sourceRectAtTime(0, false);
-        widths.push(r.left + r.width);
+    var size = o.size || 160, h = o.hscale || 1, k = o.kana || 1, trk = (o.tracking || 0) / 1000, chars = [], i;
+    var sizes = [], adv = [], wide = true;
+    for (i = 0; i < str.length; i++) if (!MV.isWide(str.charAt(i))) wide = false;
+    if (wide) {
+        for (i = 0; i < str.length; i++) {
+            var c0 = str.charAt(i), sz = MV.isKana(c0) ? size * k : size;
+            sizes.push(sz);
+            adv.push(c0 === "　" ? size * 0.5 : sz * h + size * trk);
+        }
+    } else {                      // Latin or mixed: measure the growing string with one size
+        var tmp = MV.text(comp, str.charAt(0), {font: o.font, size: size, tracking: o.tracking, hscale: h,
+                                                justify: ParagraphJustification.LEFT_JUSTIFY, noCenter: true});
+        var tp = tmp.property("ADBE Text Properties").property("ADBE Text Document"), prev = 0;
+        for (i = 1; i <= str.length; i++) {
+            var d = tp.value; d.text = str.substr(0, i); tp.setValue(d);
+            var r = tmp.sourceRectAtTime(0, false), right = r.left + r.width;
+            sizes.push(size); adv.push(right - prev); prev = right;
+        }
+        tmp.remove();
     }
-    tmp.remove();
-    var total = widths[str.length], pos = o.pos || [comp.width / 2, comp.height / 2];
-    var left = pos[0] - total / 2, lift = size * 0.36;       // anchor near the middle of the glyphs, same for all
+    var total = 0;
+    for (i = 0; i < adv.length; i++) total += adv[i];
+    var pos = o.pos || [comp.width / 2, comp.height / 2], x = pos[0] - total / 2;
     for (i = 0; i < str.length; i++) {
-        var ch = str.charAt(i);
+        var ch = str.charAt(i), cx = x + adv[i] / 2;
+        x += adv[i];
         if (ch === " " || ch === "　") continue;
-        var cx = left + (widths[i] + widths[i + 1]) / 2;
-        var L = MV.text(comp, ch, {font: o.font, size: size, fill: o.fill, stroke: o.stroke, strokeWidth: o.strokeWidth,
-                                   noCenter: true, name: (o.name || "char") + " " + ch});
+        var L = MV.text(comp, ch, {font: o.font, size: sizes[i], fill: o.fill, stroke: o.stroke, strokeWidth: o.strokeWidth,
+                                   hscale: h, vscale: o.vscale, skew: o.skew, noCenter: true, name: (o.name || "char") + " " + ch});
+        var lift = sizes[i] * 0.38 * (o.vscale || 1);        // optical middle of a CJK glyph above the baseline
         MV.tr(L, "anchor").setValue([0, -lift]);
-        MV.tr(L, "position").setValue([cx, pos[1] - lift]);
+        MV.tr(L, "position").setValue([cx, pos[1]]);
         chars.push(L);
     }
     return chars;
@@ -493,7 +506,8 @@ MV.charsAt = function (chars, times, o) {
         var L = chars[i], ti = times[Math.min(i, times.length - 1)];
         L.inPoint = Math.max(0, ti);
         var s = MV.tr(L, "scale").valueAtTime(ti, false);
-        MV.keys(MV.tr(L, "scale"), [[ti, [s[0] * (o.pop || 1.6), s[1] * (o.pop || 1.6)]], [ti + (o.dur || 0.15), s]], "out");
+        if (o.stretch) MV.keys(MV.tr(L, "scale"), [[ti, [s[0] * 0.85, s[1] * o.stretch]], [ti + (o.dur || 0.12), s]], "out");
+        else if (o.pop !== 1) MV.keys(MV.tr(L, "scale"), [[ti, [s[0] * (o.pop || 1.6), s[1] * (o.pop || 1.6)]], [ti + (o.dur || 0.15), s]], "out");
         if (o.drop) {
             var p = MV.tr(L, "position").valueAtTime(ti, false);
             MV.keys(MV.tr(L, "position"), [[ti, [p[0], p[1] - o.drop]], [ti + (o.dur || 0.15) * 1.6, p]], "out");
@@ -703,21 +717,22 @@ MV.grade = function (comp, o) {
 // stroke, strokeWidth, name}. Long-vowel marks turn 90 degrees, small kana and 、。 sit in the upper right of their cell.
 MV.splitV = function (comp, str, o) {
     o = o || {};
-    var size = o.size || 90, gap = size * (o.gap || 1.12), colGap = size * (o.colGap || 1.45), lift = size * 0.38;
+    var size = o.size || 90, k = o.kana || 1, gap = o.gap || 1.08, colGap = size * (o.colGap || 1.45);
     var cols = str.split("\n"), chars = [];
     for (var c = 0; c < cols.length; c++) {
-        var x = (o.x || comp.width * 0.8) - c * colGap;
+        var x = (o.x || comp.width * 0.8) - c * colGap, y = o.top || comp.height * 0.12;
         for (var i = 0; i < cols[c].length; i++) {
-            var ch = cols[c].charAt(i);
-            if (ch === " " || ch === "　") continue;
-            var L = MV.text(comp, ch, {font: o.font, size: size, fill: o.fill, stroke: o.stroke, strokeWidth: o.strokeWidth,
-                                       noCenter: true, name: (o.name || "v") + " " + ch});
-            MV.tr(L, "anchor").setValue([0, -lift]);
-            var px = x, py = (o.top || comp.height * 0.12) + (i + 0.5) * gap;
+            var ch = cols[c].charAt(i), sz = MV.isKana(ch) && "ー".indexOf(ch) < 0 ? size * k : size, step = sz * gap;
+            if (ch === " " || ch === "　") { y += size * gap * 0.5; continue; }
+            var L = MV.text(comp, ch, {font: o.font, size: sz, fill: o.fill, stroke: o.stroke, strokeWidth: o.strokeWidth,
+                                       hscale: o.hscale, noCenter: true, name: (o.name || "v") + " " + ch});
+            MV.tr(L, "anchor").setValue([0, -sz * 0.38]);
+            var px = x, py = y + step / 2;
             if ("ーー〜～…".indexOf(ch) >= 0) MV.tr(L, "rotation").setValue(90);
-            if ("ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ".indexOf(ch) >= 0) { px += size * 0.12; py -= size * 0.12; }
-            if ("、。".indexOf(ch) >= 0) { px += size * 0.55; py -= size * 0.55; }
+            if ("ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ".indexOf(ch) >= 0) { px += sz * 0.12; py -= sz * 0.12; }
+            if ("、。".indexOf(ch) >= 0) { px += sz * 0.55; py -= sz * 0.55; }
             MV.tr(L, "position").setValue([px, py]);
+            y += step;
             chars.push(L);
         }
     }
@@ -778,4 +793,82 @@ MV.imageInText = function (comp, imgPath, textLayer, o) {
     MV.matte(img, textLayer, "alpha");
     textLayer.enabled = false;
     return {img: img, text: textLayer};
+};
+
+// ================================================================ v1.7: one typeface, shaped type (長体・かな小さめ・縦伸び・スライス)
+MV.KANA = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわゐゑをんゔ" +
+          "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶー";
+MV.isKana = function (ch) { return MV.KANA.indexOf(ch) >= 0; };
+MV.isWide = function (ch) { return ch.charCodeAt(0) >= 0x3000; };
+
+// 長体 (h < 1) / 平体 and 縦長 (v > 1). AE's scripting unit for these is checked once: 0.5 must halve the width.
+MV._typeUnit = null;
+MV.setTypeScale = function (L, h, v) {
+    var tp = L.property("ADBE Text Properties").property("ADBE Text Document"), d;
+    if (MV._typeUnit === null) {
+        var w0 = L.sourceRectAtTime(0, false).width;
+        d = tp.value; d.horizontalScale = 0.5; tp.setValue(d);
+        var w1 = L.sourceRectAtTime(0, false).width;
+        MV._typeUnit = (w0 > 0 && w1 < w0 * 0.1) ? 100 : 1;
+        mvlog("type scale unit: " + MV._typeUnit + " (width " + Math.round(w0) + " -> " + Math.round(w1) + " at 0.5)");
+    }
+    d = tp.value;
+    d.horizontalScale = h * MV._typeUnit;
+    d.verticalScale = v * MV._typeUnit;
+    tp.setValue(d);
+    return L;
+};
+
+// 縦にビヨッ: the layer starts stretched tall and snaps back (on an accent)
+MV.stretch = function (L, t, k, dur) {
+    var s = MV.tr(L, "scale"), v = s.valueAtTime(t, false);
+    MV.keys(s, [[t, [v[0] * 0.85, v[1] * (k || 2)]], [t + (dur || 0.12), v]], "out");
+    return L;
+};
+
+MV.rectMask = function (L, x0, y0, x1, y1) {
+    var m = L.property("ADBE Mask Parade").addProperty("ADBE Mask Atom"), sh = new Shape();
+    sh.vertices = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    sh.closed = true;
+    m.property("ADBE Mask Shape").setValue(sh);
+    return m;
+};
+
+// スライス: the layer is cut by a horizontal line and the two halves jump apart for a moment, then meet again
+MV.slice = function (L, t, o) {
+    o = o || {};
+    var c = L.containingComp, fd = c.frameDuration, r = L.sourceRectAtTime(t, false), pad = 600;
+    var y = r.top + r.height * (o.frac || 0.55), shift = o.shift || 60, dur = o.dur || 0.25;
+    var bot = L.duplicate();
+    bot.name = L.name + " lower";
+    MV.rectMask(L, r.left - pad, r.top - pad, r.left + r.width + pad, y);
+    MV.rectMask(bot, r.left - pad, y, r.left + r.width + pad, r.top + r.height + pad);
+    var parts = [[L, shift], [bot, -shift]];
+    for (var i = 0; i < 2; i++) {
+        var p = MV.tr(parts[i][0], "position"), v = p.valueAtTime(t, false);
+        MV.keys(p, [[t - fd, v], [t, [v[0] + parts[i][1], v[1]]], [t + dur, v]], "out");
+    }
+    return [L, bot];
+};
+
+// 方向ブラー: a streak that clears (rain-like entrance); angle 0 = vertical
+MV.smear = function (L, t, dur, angle, len) {
+    var e = MV.fx(L, "ADBE Motion Blur", {"ADBE Motion Blur-0001": angle || 0});
+    MV.keys(MV.findProp(e, "ADBE Motion Blur-0002"), [[t, len || 120], [t + (dur || 0.3), 0]], "out");
+    return e;
+};
+
+// a thin line that draws itself (the one colour accent)
+MV.rule = function (comp, t, pos, len, vertical, color, width, dur) {
+    var w = width || 4, L = MV.shape(comp, "rect", vertical ? [w, len] : [len, w], {fill: color || [1, 0.83, 0], pos: pos, name: "rule"});
+    MV.keys(MV.tr(L, "scale"), [[t, vertical ? [100, 0] : [0, 100]], [t + (dur || 0.6), [100, 100]]], "out");
+    return L;
+};
+
+// colour wash over everything (soft light), used by the finishing grade to tie the scenes together
+MV.wash = function (comp, color, amount) {
+    var L = MV.solid(comp, color, "wash");
+    L.blendingMode = BlendingMode.SOFT_LIGHT;
+    MV.tr(L, "opacity").setValue(amount || 25);
+    return L;
 };
