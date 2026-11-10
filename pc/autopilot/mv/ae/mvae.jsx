@@ -1,4 +1,4 @@
-// mvae.jsx - reusable parts for building MV compositions in After Effects (ExtendScript / ES3).
+﻿// mvae.jsx - reusable parts for building MV compositions in After Effects (ExtendScript / ES3).
 // Loaded by the runner's ae_script job before the build script. Everything lives in the MV object.
 // Effects and properties are addressed by matchName, so the Japanese UI does not matter.
 

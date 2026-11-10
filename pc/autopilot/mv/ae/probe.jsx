@@ -1,4 +1,4 @@
-// probe.jsx - first check of the After Effects automation (ae_script job).
+﻿// probe.jsx - first check of the After Effects automation (ae_script job).
 // Reports AE's version and language, whether the MV fonts are visible, the localised render templates,
 // and the property tree (matchNames) of every built-in effect, so that build scripts can address them.
 // Then builds a 3-second test comp, writes one still, saves a test .aep and queues two renders.
