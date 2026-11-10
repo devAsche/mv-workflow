@@ -10,7 +10,9 @@ var MV = MV || {};
 MV._isOwnItem = function (it) {
     if (it.name.indexOf("MV_") === 0 || it.name.indexOf("MVテスト") === 0 || it.name === "probe") return true;
     if (it instanceof FolderItem) return true;
-    return it instanceof FootageItem && it.mainSource instanceof SolidSource;
+    if (!(it instanceof FootageItem)) return false;
+    if (it.mainSource instanceof SolidSource) return true;
+    return !!(it.file && /[\\\/]autopilot[\\\/]/i.test(it.file.fsName));
 };
 
 MV.newProject = function () {
@@ -24,6 +26,10 @@ MV.newProject = function () {
             for (var i = 1; i <= p.numItems; i++) if (!MV._isOwnItem(p.item(i))) { ours = false; break; }
         }
         if (!ours) throw new Error("After Effects has an unsaved project open; save or close it first");
+        if (p.file) {          // one of ours, but someone may have edited it: keep those edits in a copy next to it
+            var d = new Date(), stamp = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate() + "-" + d.getHours() * 10000 + d.getMinutes() * 100 + d.getSeconds();
+            try { p.save(new File(p.file.fsName.replace(/\.aep$/i, "") + "_edited_" + stamp + ".aep")); } catch (e) {}
+        }
         p.close(CloseOptions.DO_NOT_SAVE_CHANGES);
     }
     app.newProject();
@@ -101,7 +107,7 @@ MV.text = function (comp, str, o) {
     else d.justification = ParagraphJustification.CENTER_JUSTIFY;
     if (o.vertical) { try { d.lineOrientation = LineOrientation.VERTICAL_RIGHT_TO_LEFT; } catch (e) {} }
     tp.setValue(d);
-    MV.centerAnchor(L);
+    if (!o.noCenter) MV.centerAnchor(L);
     var tr = L.property("ADBE Transform Group");
     tr.property("ADBE Position").setValue(o.pos || [comp.width / 2, comp.height / 2]);
     if (o.name) L.name = o.name;
@@ -255,20 +261,23 @@ MV.findTemplate = function (list, words) {    // template names are localised; p
     return null;
 };
 
-// Add a render-queue item. kind "png": PNG sequence; "h264": AE's built-in H.264; "lossless": the default.
+// Add a render-queue item. kind "h264": AE's own H.264 (mp4, with the comp's audio); "tiff" or "png": an image
+// sequence (AE 25.6 here has no PNG template, so "png" falls back to TIFF); "lossless": AVI lossless.
+// Returns {item, template, file}.
 MV.addRender = function (comp, outPath, kind) {
     var rq = app.project.renderQueue.items.add(comp);
     var om = rq.outputModule(1);
-    var words = {png: ["PNG"], h264: ["H.264"]}[kind];
-    if (words) {
-        var t = MV.findTemplate(om.templates, words);
-        if (!t) throw new Error("no output-module template with " + words.join(" ") + " in: " + om.templates.join(" | "));
-        om.applyTemplate(t);
-    }
+    var tries = {png: [["PNG"], ["TIFF"]], tiff: [["TIFF"]], h264: [["H.264", "15"], ["H.264"]], lossless: [["ロスレス"], ["Lossless"]]}[kind] || [];
+    var used = null;
+    for (var i = 0; i < tries.length && !used; i++) used = MV.findTemplate(om.templates, tries[i]);
+    if (tries.length && !used) throw new Error("no output-module template for " + kind + " in: " + om.templates.join(" | "));
+    if (used) om.applyTemplate(used);
+    if (used && /TIFF|PNG/i.test(used) && outPath.indexOf("[#") < 0)
+        outPath = outPath.replace(/\.[^.\\\/]*$/, "") + "_[#####]" + (/TIFF/i.test(used) ? ".tif" : ".png");
     var f = new File(outPath);
     if (!f.parent.exists) f.parent.create();
     om.file = f;
-    return rq;
+    return {item: rq, template: used, file: outPath};
 };
 
 // ================================================================ v1.6: building blocks for the techniques
@@ -316,7 +325,7 @@ MV.slam = function (L, t, from, dur, o) {
 
 // 9 極大→小: one frame very large, then snap to the normal size
 MV.punch = function (L, t, big, dur) {
-    var s = MV.tr(L, "scale"), v = s.value, k = big || 400;
+    var s = MV.tr(L, "scale"), v = s.valueAtTime(t, false), k = big || 400;
     MV.keys(s, [[t, [v[0] * k / 100, v[1] * k / 100]], [t + (dur || 0.12), v]], "out");
     return L;
 };
@@ -410,29 +419,93 @@ MV.openText = function (L, t, from, to, dur) {
     return a;
 };
 
-// letters fly in one by one from random directions (A: "TAバラバラ" / B: 1文字ずつアニメーション)
-MV.scatterIn = function (L, t, dur, o) {
-    o = o || {};
-    var c = L.containingComp;
-    var a = MV.animator(L, {position: [0, 0, 0], rotation: 0, scale: [100, 100, 100], opacity: 0}, {random: true, shape: "rampUp", basedOn: "chars"});
-    MV.expr(a.props.position, "seedRandom(textIndex, true); [random(-1,1), random(-1,1), 0] * " + (o.dist || c.width * 0.4));
-    MV.expr(a.props.rotation, "seedRandom(textIndex + 99, true); random(-1,1) * " + (o.rot || 120));
-    a.props.scale.setValue(o.scale || [260, 260, 100]);
-    MV.keys(a.end, [[t, 100], [t + (dur || 0.5), 0]], "out");
-    a.start.setValue(0);
-    // the selector covers 0..end; shrinking end releases the letters into place in random order
-    return a;
+// ---- split letters (A: SplitText + TAバラバラ). Each character becomes its own layer at the place it has in the line,
+// so every letter can get its own direction, spin and timing.
+MV._seed = 12345;
+MV.rand = function (lo, hi) {          // small seeded generator, so a rebuild gives the same layout
+    MV._seed = (MV._seed * 16807) % 2147483647;
+    return lo + (hi - lo) * ((MV._seed - 1) / 2147483646);
 };
 
-// ノイズでグシャぁ: letters break apart (jitter, tilt, blur, fade) in random order
-MV.crumbleOut = function (L, t, dur, o) {
+MV.splitText = function (comp, str, o) {
     o = o || {};
-    var a = MV.animator(L, {position: [0, 0, 0], rotation: 0, blur: [0, 0], opacity: 0}, {random: true, basedOn: "chars"});
-    MV.expr(a.props.position, "seedRandom(textIndex, true); [random(-1,1)*" + (o.spread || 120) + ", random(0.2,1)*" + (o.fall || 260) + ", 0]");
-    MV.expr(a.props.rotation, "seedRandom(textIndex + 7, true); random(-1,1) * 90");
-    a.props.blur.setValue(o.blur || [18, 18]);
-    MV.keys(a.end, [[t, 0], [t + (dur || 0.6), 100]], "in");
-    return a;
+    var size = o.size || 160, chars = [], widths = [0];
+    var tmp = MV.text(comp, str.charAt(0), {font: o.font, size: size, tracking: o.tracking, justify: ParagraphJustification.LEFT_JUSTIFY, noCenter: true});
+    var tp = tmp.property("ADBE Text Properties").property("ADBE Text Document");
+    for (var i = 1; i <= str.length; i++) {
+        var d = tp.value; d.text = str.substr(0, i); tp.setValue(d);
+        var r = tmp.sourceRectAtTime(0, false);
+        widths.push(r.left + r.width);
+    }
+    tmp.remove();
+    var total = widths[str.length], pos = o.pos || [comp.width / 2, comp.height / 2];
+    var left = pos[0] - total / 2, lift = size * 0.36;       // anchor near the middle of the glyphs, same for all
+    for (i = 0; i < str.length; i++) {
+        var ch = str.charAt(i);
+        if (ch === " " || ch === "　") continue;
+        var cx = left + (widths[i] + widths[i + 1]) / 2;
+        var L = MV.text(comp, ch, {font: o.font, size: size, fill: o.fill, stroke: o.stroke, strokeWidth: o.strokeWidth,
+                                   noCenter: true, name: (o.name || "char") + " " + ch});
+        MV.tr(L, "anchor").setValue([0, -lift]);
+        MV.tr(L, "position").setValue([cx, pos[1] - lift]);
+        chars.push(L);
+    }
+    return chars;
+};
+
+// letters fly in from random directions, one after another
+MV.scatterIn = function (chars, t, o) {
+    o = o || {};
+    var dur = o.dur || 0.4, stag = o.stagger === undefined ? 0.035 : o.stagger, dist = o.dist || 700;
+    for (var i = 0; i < chars.length; i++) {
+        var L = chars[i], p = MV.tr(L, "position").value, a = MV.rand(0, Math.PI * 2), k = MV.rand(0.5, 1);
+        var ti = t + (o.order === "random" ? MV.rand(0, stag * chars.length) : i * stag);
+        MV.keys(MV.tr(L, "position"), [[ti, [p[0] + Math.cos(a) * dist * k, p[1] + Math.sin(a) * dist * k]], [ti + dur, p]], "out");
+        MV.keys(MV.tr(L, "rotation"), [[ti, MV.rand(-1, 1) * (o.rot || 160)], [ti + dur, 0]], "out");
+        MV.keys(MV.tr(L, "scale"), [[ti, [o.scale || 260, o.scale || 260]], [ti + dur, [100, 100]]], "out");
+        MV.keys(MV.tr(L, "opacity"), [[ti, 0], [ti + dur * 0.3, 100]], "linear");
+        if (L.inPoint > ti) L.inPoint = ti;
+        MV.blur(L);
+    }
+    return chars;
+};
+
+// ノイズでグシャぁ: letters fall apart (drop, tilt, blur, fade) in random order
+MV.crumbleOut = function (chars, t, o) {
+    o = o || {};
+    var dur = o.dur || 0.55;
+    for (var i = 0; i < chars.length; i++) {
+        var L = chars[i], ti = t + MV.rand(0, o.spread || 0.25), p = MV.tr(L, "position").valueAtTime(ti, false);
+        MV.keys(MV.tr(L, "position"), [[ti, p], [ti + dur, [p[0] + MV.rand(-1, 1) * 160, p[1] + MV.rand(0.4, 1) * (o.fall || 380)]]], "in");
+        MV.keys(MV.tr(L, "rotation"), [[ti, 0], [ti + dur, MV.rand(-1, 1) * 100]], "in");
+        MV.keys(MV.tr(L, "opacity"), [[ti + dur * 0.4, 100], [ti + dur, 0]], "linear");
+        var e = MV.fx(L, "ADBE Gaussian Blur 2");
+        MV.keys(MV.findProp(e, "ADBE Gaussian Blur 2-0001"), [[ti, 0], [ti + dur, 30]], "in");
+        MV.blur(L);
+    }
+    return chars;
+};
+
+// each letter appears at its own time: times[i] for chars[i] (lyric timing), with a small pop
+MV.charsAt = function (chars, times, o) {
+    o = o || {};
+    for (var i = 0; i < chars.length; i++) {
+        var L = chars[i], ti = times[Math.min(i, times.length - 1)];
+        L.inPoint = Math.max(0, ti);
+        var s = MV.tr(L, "scale").valueAtTime(ti, false);
+        MV.keys(MV.tr(L, "scale"), [[ti, [s[0] * (o.pop || 1.6), s[1] * (o.pop || 1.6)]], [ti + (o.dur || 0.15), s]], "out");
+        if (o.drop) {
+            var p = MV.tr(L, "position").valueAtTime(ti, false);
+            MV.keys(MV.tr(L, "position"), [[ti, [p[0], p[1] - o.drop]], [ti + (o.dur || 0.15) * 1.6, p]], "out");
+            MV.blur(L);
+        }
+    }
+    return chars;
+};
+
+MV.spanAll = function (layers, tIn, tOut) {
+    for (var i = 0; i < layers.length; i++) { if (tIn !== null) layers[i].inPoint = Math.max(layers[i].inPoint, tIn); layers[i].outPoint = tOut; }
+    return layers;
 };
 
 // typewriter / character reveal with hold steps (for quiet verses)
@@ -465,4 +538,244 @@ MV.adjust = function (comp, name, tIn, tOut) {
     L.adjustmentLayer = true;
     if (tIn !== undefined) MV.span(L, tIn, tOut);
     return L;
+};
+
+// ================================================================ v1.6b: footage, fonts and effect-based techniques
+// Effect property matchNames below were read from AE 25.6 (research/ae/effects_dump_ae25.6.json in project files).
+
+// first installed font out of a list of PostScript names or family names; null when none is found
+MV.pickFont = function (cands) {
+    for (var i = 0; i < cands.length; i++) {
+        var c = cands[i];
+        try {
+            if (app.fonts.getFontsByPostScriptName) {
+                var f = app.fonts.getFontsByPostScriptName(c);
+                if (f && f.length) return f[0].postScriptName;
+            }
+            var g = app.fonts.getFontsByFamilyNameAndStyleName(c.split("/")[0], c.split("/")[1] || "Regular");
+            if (g && g.length) return g[0].postScriptName;
+        } catch (e) {}
+    }
+    return null;
+};
+
+// a still or movie as a layer; fit "cover" (fill the frame) or "height" (character cut-outs), extra in %
+MV.layerFrom = function (comp, path, o) {
+    o = o || {};
+    var L = comp.layers.add(MV.importFile(path));
+    var sw = L.source.width, sh = L.source.height, k;
+    if (o.fit === "height") k = comp.height * (o.h || 1) / sh * 100;
+    else k = Math.max(comp.width / sw, comp.height / sh) * 100 * (o.extra || 1);
+    MV.tr(L, "scale").setValue([k, k]);
+    if (o.pos) MV.tr(L, "position").setValue(o.pos);
+    if (o.name) L.name = o.name;
+    if (o.tIn !== undefined) MV.span(L, o.tIn, o.tOut);
+    return L;
+};
+
+// reveal a text layer word by word at given times: words [[text, t], ...] (the layer's text is the words joined)
+MV.typeWords = function (L, words, o) {
+    o = o || {};
+    var n = 0, i;
+    for (i = 0; i < words.length; i++) n += words[i][0].length;
+    var a = MV.animator(L, {opacity: 0}, {basedOn: "chars"});
+    a.selector.property("ADBE Text Range Advanced").property("ADBE Text Range Shape").setValue(1);   // square
+    var list = [], done = 0;
+    for (i = 0; i < words.length; i++) { done += words[i][0].length; list.push([words[i][1], done / n * 100]); }
+    list.unshift([Math.max(0, words[0][1] - 0.01), 0]);
+    MV.keys(a.start, list, o.ease || "hold");
+    if (o.pop) {             // each new word pops from a little larger
+        var b = MV.animator(L, {scale: [o.pop, o.pop, 100]}, {basedOn: "chars"});
+        b.selector.property("ADBE Text Range Advanced").property("ADBE Text Range Shape").setValue(1);
+        var l2 = [], d2 = 0;
+        for (i = 0; i < words.length; i++) {
+            d2 += words[i][0].length;
+            l2.push([words[i][1], (d2 - words[i][0].length) / n * 100]);
+            l2.push([words[i][1] + 0.12, d2 / n * 100]);
+        }
+        MV.keys(b.start, l2, "out");
+    }
+    return a;
+};
+
+// 4 一瞬キラッ: Colorama phase turns once in `frames`, then blends back to the original
+MV.kira = function (L, t, frames) {
+    var c = L.containingComp, d = MV.f(c, frames || 5);
+    var e = MV.fx(L, "APC Colorama");
+    MV.keys(MV.findProp(e, "APC Colorama-0008"), [[t, 0], [t + d, 360]], "linear");
+    MV.keys(MV.findProp(e, "APC Colorama-0036"), [[t - c.frameDuration, 100], [t, 0], [t + d, 0], [t + d + c.frameDuration, 100]], "hold");
+    return e;
+};
+
+// 19 ブラインドイン: stripes close to reveal the layer
+MV.blindsIn = function (L, t, dur, angle, width) {
+    var e = MV.fx(L, "ADBE Venetian Blinds", {"ADBE Venetian Blinds-0002": angle || 60, "ADBE Venetian Blinds-0003": width || 60});
+    MV.keys(MV.findProp(e, "ADBE Venetian Blinds-0001"), [[t, 100], [t + (dur || 0.3), 0]], "out");
+    return e;
+};
+
+// ノイズでグシャ / 汚し: turbulent displace that ramps in (and optionally out)
+MV.turb = function (L, t0, t1, amount, size) {
+    var e = MV.fx(L, "ADBE Turbulent Displace", {"ADBE Turbulent Displace-0003": size || 40});
+    var a = MV.findProp(e, "ADBE Turbulent Displace-0002");
+    MV.keys(a, [[t0, 0], [t1, amount || 120]], "in");
+    MV.expr(MV.findProp(e, "ADBE Turbulent Displace-0006"), "time * 720");
+    return e;
+};
+
+// 汚れた文字: rough, eaten edges that crawl slowly
+MV.roughText = function (L, border, scale) {
+    var e = MV.fx(L, "ADBE Roughen Edges", {"ADBE Roughen Edges-0002": border || 6, "ADBE Roughen Edges-0005": scale || 60});
+    MV.expr(MV.findProp(e, "ADBE Roughen Edges-0009"), "time * 90");
+    return e;
+};
+
+// モザイクで切り替え: blocks get finer between t and t+dur
+MV.mosaicIn = function (L, t, dur, from) {
+    var e = MV.fx(L, "ADBE Mosaic");
+    var h = MV.findProp(e, "ADBE Mosaic-0001"), v = MV.findProp(e, "ADBE Mosaic-0002");
+    var k = from || 12, c = L.containingComp;
+    MV.keys(h, [[t, k], [t + (dur || 0.25), 1000]], "hold");
+    MV.keys(v, [[t, Math.round(k * c.height / c.width)], [t + (dur || 0.25), 1000]], "hold");
+    return e;
+};
+
+// 14 シルエット (塗り) and black-and-white tint for a mood shift
+MV.silhouette = function (L, color) { return MV.fx(L, "ADBE Fill", {"ADBE Fill-0002": color.length === 4 ? color : color.concat([1])}); };
+MV.mono = function (L, tint, amount) {
+    var e = MV.fx(L, "ADBE Black&White");
+    if (tint) MV.fx(L, "ADBE Tint", {"ADBE Tint-0001": [0.02, 0.03, 0.08, 1], "ADBE Tint-0002": tint.concat([1]), "ADBE Tint-0003": amount || 100});
+    return e;
+};
+MV.keepColor = function (L, color, tol) {     // 色抜き: everything grey except one colour (the yellow umbrella)
+    return MV.fx(L, "ADBE Leave Color", {"ADBE Leave Color-0001": 100, "ADBE Leave Color-0002": color.concat([1]),
+                                          "ADBE Leave Color-0003": tol || 25, "ADBE Leave Color-0004": 20});
+};
+MV.blurFx = function (L, amount) { return MV.fx(L, "ADBE Gaussian Blur 2", {"ADBE Gaussian Blur 2-0001": amount, "ADBE Gaussian Blur 2-0003": 1}); };
+MV.dim = function (L, exposure) { return MV.fx(L, "ADBE Exposure2", {"ADBE Exposure2-0003": exposure}); };
+
+// a thin ring that grows and fades (raindrop ripple / accent)
+MV.ring = function (comp, t, pos, size, color, dur) {
+    var L = MV.shape(comp, "ellipse", [size, size], {stroke: color || [1, 1, 1], strokeWidth: 6, pos: pos, name: "ring"});
+    MV.span(L, t, t + (dur || 0.8));
+    MV.keys(MV.tr(L, "scale"), [[t, [10, 10]], [t + (dur || 0.8), [100, 100]]], "out");
+    MV.keys(MV.tr(L, "opacity"), [[t, 100], [t + (dur || 0.8), 0]], "in");
+    return L;
+};
+
+// letters hop one after another (a travelling bump)
+MV.hop = function (L, t, dur, height) {
+    var a = MV.animator(L, {position: [0, -(height || 80), 0]}, {shape: "triangle", basedOn: "chars"});
+    a.end.setValue(30);
+    MV.keys(a.offset, [[t, -30], [t + (dur || 0.6), 100]], "linear");
+    return a;
+};
+
+// vignette: black solid with a feathered, inverted ellipse mask
+MV.vignette = function (comp, amount, feather) {
+    var L = MV.solid(comp, [0, 0, 0], "vignette");
+    var m = L.property("ADBE Mask Parade").addProperty("ADBE Mask Atom");
+    var s = new Shape(), w = comp.width, h = comp.height, k = 0.5523;
+    s.vertices = [[w / 2, -h * 0.08], [w * 1.06, h / 2], [w / 2, h * 1.08], [-w * 0.06, h / 2]];
+    s.inTangents = [[-w * 0.56 * k, 0], [0, -h * 0.58 * k], [w * 0.56 * k, 0], [0, h * 0.58 * k]];
+    s.outTangents = [[w * 0.56 * k, 0], [0, h * 0.58 * k], [-w * 0.56 * k, 0], [0, -h * 0.58 * k]];
+    s.closed = true;
+    m.property("ADBE Mask Shape").setValue(s);
+    m.property("ADBE Mask Feather").setValue([feather || 380, feather || 380]);
+    m.inverted = true;
+    MV.tr(L, "opacity").setValue(amount || 55);
+    return L;
+};
+
+// finishing grade on an adjustment layer: glow on highlights, a little grain, slightly richer colour
+MV.grade = function (comp, o) {
+    o = o || {};
+    var L = MV.adjust(comp, "grade");
+    MV.fx(L, "ADBE Glo2", {"ADBE Glo2-0002": o.glowThreshold || 170, "ADBE Glo2-0003": o.glowRadius || 80, "ADBE Glo2-0004": o.glow || 0.35});
+    MV.fx(L, "ADBE Vibrance", {"ADBE Vibrance-0001": o.vibrance || 15});
+    MV.fx(L, "ADBE Noise2", {"ADBE Noise2-0001": o.grain || 3, "ADBE Noise2-0002": 0});
+    return L;
+};
+
+// ================================================================ v1.6c: vertical lyrics, character moves, frame accents
+
+// 縦書き: one layer per character, columns right to left ("\n" starts the next column). o: {font, size, x, top, gap, colGap, fill,
+// stroke, strokeWidth, name}. Long-vowel marks turn 90 degrees, small kana and 、。 sit in the upper right of their cell.
+MV.splitV = function (comp, str, o) {
+    o = o || {};
+    var size = o.size || 90, gap = size * (o.gap || 1.12), colGap = size * (o.colGap || 1.45), lift = size * 0.38;
+    var cols = str.split("\n"), chars = [];
+    for (var c = 0; c < cols.length; c++) {
+        var x = (o.x || comp.width * 0.8) - c * colGap;
+        for (var i = 0; i < cols[c].length; i++) {
+            var ch = cols[c].charAt(i);
+            if (ch === " " || ch === "　") continue;
+            var L = MV.text(comp, ch, {font: o.font, size: size, fill: o.fill, stroke: o.stroke, strokeWidth: o.strokeWidth,
+                                       noCenter: true, name: (o.name || "v") + " " + ch});
+            MV.tr(L, "anchor").setValue([0, -lift]);
+            var px = x, py = (o.top || comp.height * 0.12) + (i + 0.5) * gap;
+            if ("ーー〜～…".indexOf(ch) >= 0) MV.tr(L, "rotation").setValue(90);
+            if ("ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ".indexOf(ch) >= 0) { px += size * 0.12; py -= size * 0.12; }
+            if ("、。".indexOf(ch) >= 0) { px += size * 0.55; py -= size * 0.55; }
+            MV.tr(L, "position").setValue([px, py]);
+            chars.push(L);
+        }
+    }
+    return chars;
+};
+
+// per-character times from word timings [[text, start, end], ...]: the characters of a word share its span evenly
+MV.charTimes = function (words) {
+    var out = [];
+    for (var i = 0; i < words.length; i++) {
+        var w = words[i][0].replace(/[ 　\n]/g, ""), t0 = words[i][1], t1 = words[i].length > 2 ? words[i][2] : t0;
+        for (var k = 0; k < w.length; k++) out.push(t0 + (t1 - t0) * k / w.length);
+    }
+    return out;
+};
+
+// a short jump of a whole layer (character cut-out on an accent)
+MV.bounce = function (L, t, dur, height) {
+    var p = MV.tr(L, "position"), v = p.valueAtTime(t, false), d = dur || 0.3, h = height || 60;
+    MV.keys(p, [[t, v], [t + d * 0.38, [v[0], v[1] - h]], [t + d, v]], "inout");
+    return L;
+};
+
+// 一瞬だけ揺らす: wiggle on position only between t0 and t1 (never a constant beat shake)
+MV.jolt = function (L, t0, t1, freq, amp) {
+    MV.expr(MV.tr(L, "position"), "var a = " + t0 + ", b = " + t1 + "; (time >= a && time < b) ? wiggle(" + (freq || 24) + ", " + (amp || 20) + ") : value");
+    return L;
+};
+
+// ズレ影: a flat-coloured copy behind the layer, offset by [dx, dy], following all of its keys
+MV.echo = function (L, color, offset) {
+    var d = L.duplicate();
+    d.moveAfter(L);
+    d.name = L.name + " echo";
+    MV.silhouette(d, color);
+    var o = offset || [16, 12];
+    MV.expr(MV.tr(d, "position"), "value + [" + o[0] + ", " + o[1] + "]");
+    return d;
+};
+
+// black bars that slam in from top and bottom, leaving a band of height bandH (目元だけ見せる帯)
+MV.bars = function (comp, t, bandH, o) {
+    o = o || {};
+    var h = (comp.height - bandH) / 2 + 20, out = [];
+    var top = MV.shape(comp, "rect", [comp.width * 1.2, h], {fill: o.color || [0, 0, 0], pos: [comp.width / 2, h / 2 - 20], name: "bar top"});
+    var bot = MV.shape(comp, "rect", [comp.width * 1.2, h], {fill: o.color || [0, 0, 0], pos: [comp.width / 2, comp.height - h / 2 + 20], name: "bar bottom"});
+    MV.slam(top, t, "top", o.dur || 0.3, {dist: h});
+    MV.slam(bot, t, "bottom", o.dur || 0.3, {dist: h});
+    out.push(top, bot);
+    return out;
+};
+
+// a text-shaped window onto an image: the image shows only inside the letters; returns {img, text}
+MV.imageInText = function (comp, imgPath, textLayer, o) {
+    o = o || {};
+    var img = MV.layerFrom(comp, imgPath, {fit: "cover", extra: o.extra || 1.1, name: "in-text " + textLayer.name});
+    img.moveAfter(textLayer);
+    MV.matte(img, textLayer, "alpha");
+    textLayer.enabled = false;
+    return {img: img, text: textLayer};
 };
