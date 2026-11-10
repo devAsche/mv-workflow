@@ -5,6 +5,7 @@
 #              The script is wrapped so that errors are caught, dialogs are suppressed, and a
 #              done-file (JSON) is written into the job's output folder. The runner waits for
 #              that file instead of the AfterFX.exe process, which may keep running as AE itself.
+#   ae_status  read-only report: is AE running, which windows and dialog texts it shows (v1.6).
 #   ae_render  renders a saved .aep with aerender.exe (AE's own headless renderer), then can
 #              encode a PNG sequence to mp4 with ffmpeg.
 #
@@ -19,7 +20,7 @@ R = None
 def register(runner):
     global R
     R = runner
-    return {"ae_script": h_ae_script, "ae_render": h_ae_render}
+    return {"ae_script": h_ae_script, "ae_render": h_ae_render, "ae_status": h_ae_status}
 
 
 def _afterfx():
@@ -37,6 +38,63 @@ def _aerender():
     if not os.path.exists(exe):
         raise FileNotFoundError(exe)
     return exe
+
+
+def _ae_windows(limit=12):
+    """Read-only look at After Effects' open windows (titles, and the text of any dialog), so that a timeout
+    can say what AE is waiting for. Nothing is clicked or typed."""
+    import csv, ctypes, io
+    from ctypes import wintypes
+    try:
+        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH", "/FI", "IMAGENAME eq AfterFX.exe"],
+                             capture_output=True, timeout=20).stdout.decode("cp932", "replace")
+        pids = {int(r[1]) for r in csv.reader(io.StringIO(out)) if len(r) > 1 and r[1].isdigit()}
+    except Exception as e:
+        return {"error": f"tasklist failed: {e}"}
+    if not pids:
+        return {"afterfx_running": False}
+    u = ctypes.WinDLL("user32", use_last_error=True)        # own handle, so argtypes do not leak elsewhere
+    proto = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    u.EnumWindows.argtypes = [proto, wintypes.LPARAM]
+    u.EnumChildWindows.argtypes = [wintypes.HWND, proto, wintypes.LPARAM]
+    u.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    u.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    u.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    u.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    u.IsWindowVisible.argtypes = [wintypes.HWND]
+
+    def text(h):
+        n = u.GetWindowTextLengthW(h)
+        b = ctypes.create_unicode_buffer(min(n, 2000) + 1)
+        u.GetWindowTextW(h, b, len(b))
+        return b.value
+
+    def cls(h):
+        b = ctypes.create_unicode_buffer(128)
+        u.GetClassNameW(h, b, 128)
+        return b.value
+
+    wins = []
+
+    def each(h, _):
+        pid = wintypes.DWORD()
+        u.GetWindowThreadProcessId(h, ctypes.byref(pid))
+        if pid.value in pids and u.IsWindowVisible(h) and len(wins) < limit:
+            w = {"title": text(h), "class": cls(h)}
+            kids = []
+
+            def child(c, _):
+                t = text(c)
+                if t and len(kids) < 20:
+                    kids.append(t)
+                return True
+            u.EnumChildWindows(h, proto(child), 0)
+            if kids:
+                w["texts"] = kids
+            wins.append(w)
+        return True
+    u.EnumWindows(proto(each), 0)
+    return {"afterfx_running": True, "pids": sorted(pids), "windows": wins}
 
 
 def _js(v):
@@ -102,9 +160,14 @@ def h_ae_script(ctx, j):
     t0, timeout = time.time(), j.get("timeout", 900)
     while not os.path.exists(done):
         if time.time() - t0 > timeout:
+            seen = _ae_windows()
+            ctx.log("AE windows:", json.dumps(seen, ensure_ascii=False))
+            json.dump(seen, open(ctx.out("_ae_windows.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            ctx.add(ctx.out("_ae_windows.json"))
             raise TimeoutError(
                 f"no answer from After Effects after {timeout}s. Check that AE is not showing a dialog, and that "
-                "Edit > Preferences > Scripting & Expressions > 'Allow Scripts to Write Files and Access Network' is on.")
+                "Edit > Preferences > Scripting & Expressions > 'Allow Scripts to Write Files and Access Network' is on. "
+                "AE windows: " + json.dumps(seen, ensure_ascii=False)[:1500])
         time.sleep(2)
     time.sleep(0.5)
     res = json.load(open(done, encoding="utf-8-sig"))
@@ -159,3 +222,11 @@ def h_ae_render(ctx, j):
         for p in sorted(glob.glob(os.path.join(base, pat))):
             ctx.add(R.safe_path(p))
     return info
+
+
+def h_ae_status(ctx, j):
+    """{} -> whether AfterFX.exe runs and the titles/texts of its visible windows (nothing is clicked)."""
+    seen = _ae_windows(limit=j.get("limit", 12))
+    json.dump(seen, open(ctx.out("_ae_windows.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    ctx.add(ctx.out("_ae_windows.json"))
+    return seen

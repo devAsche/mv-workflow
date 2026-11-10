@@ -253,3 +253,199 @@ MV.addRender = function (comp, outPath, kind) {
     om.file = f;
     return rq;
 };
+
+// ================================================================ v1.6: building blocks for the techniques
+// Numbers in comments refer to the technique list in research (B = the 1-minute AE technique song).
+
+MV.fps = function (comp) { return 1 / comp.frameDuration; };
+MV.f = function (comp, n) { return n * comp.frameDuration; };       // n frames in seconds
+
+// shape layer: kind "ellipse" | "rect"; o: {fill, stroke, strokeWidth, roundness, pos, name}
+MV.shape = function (comp, kind, size, o) {
+    o = o || {};
+    var L = comp.layers.addShape();
+    var g = L.property("ADBE Root Vectors Group").addProperty("ADBE Vector Group");
+    var v = g.property("ADBE Vectors Group");
+    if (kind === "rect") {
+        var r = v.addProperty("ADBE Vector Shape - Rect");
+        r.property("ADBE Vector Rect Size").setValue(size);
+        if (o.roundness) r.property("ADBE Vector Rect Roundness").setValue(o.roundness);
+    } else {
+        v.addProperty("ADBE Vector Shape - Ellipse").property("ADBE Vector Ellipse Size").setValue(size);
+    }
+    if (o.stroke) {
+        var s = v.addProperty("ADBE Vector Graphic - Stroke");
+        s.property("ADBE Vector Stroke Color").setValue(o.stroke);
+        s.property("ADBE Vector Stroke Width").setValue(o.strokeWidth || 8);
+    }
+    if (o.fill) v.addProperty("ADBE Vector Graphic - Fill").property("ADBE Vector Fill Color").setValue(o.fill);
+    MV.tr(L, "position").setValue(o.pos || [comp.width / 2, comp.height / 2]);
+    if (o.name) L.name = o.name;
+    return L;
+};
+
+MV.blur = function (L, on) { L.motionBlur = on !== false; L.containingComp.motionBlur = true; return L; };
+
+// 12 両脇からドーン: slide in from off-screen with a fast start and a long settle. from: left|right|top|bottom
+MV.slam = function (L, t, from, dur, o) {
+    o = o || {};
+    var c = L.containingComp, p = MV.tr(L, "position"), end = o.to || p.value;
+    var dx = {left: -1, right: 1, top: 0, bottom: 0}[from], dy = {left: 0, right: 0, top: -1, bottom: 1}[from];
+    var dist = o.dist || (dx ? c.width : c.height) * 1.1;
+    MV.keys(p, [[t, [end[0] + dx * dist, end[1] + dy * dist]], [t + (dur || 0.25), end]], "out");
+    MV.blur(L);
+    return L;
+};
+
+// 9 極大→小: one frame very large, then snap to the normal size
+MV.punch = function (L, t, big, dur) {
+    var s = MV.tr(L, "scale"), v = s.value, k = big || 400;
+    MV.keys(s, [[t, [v[0] * k / 100, v[1] * k / 100]], [t + (dur || 0.12), v]], "out");
+    return L;
+};
+
+// zoom on a still: [[t, scale%, [x, y]], ...]; ease "out" gives the "グン" push, "inout" a camera-like move
+MV.move = function (L, list, ease) {
+    var s = [], p = [];
+    for (var i = 0; i < list.length; i++) {
+        s.push([list[i][0], [list[i][1], list[i][1]]]);
+        if (list[i][2]) p.push([list[i][0], list[i][2]]);
+    }
+    MV.keys(MV.tr(L, "scale"), s, ease || "out");
+    if (p.length) MV.keys(MV.tr(L, "position"), p, ease || "out");
+    MV.blur(L);
+    return L;
+};
+
+// 8 ストロボ: opacity 100/0 alternating every n frames between t0 and t1, then stays visible
+MV.strobe = function (L, t0, t1, n) {
+    var c = L.containingComp, step = MV.f(c, n || 2), list = [], on = true;
+    for (var t = t0; t < t1; t += step) { list.push([t, on ? 100 : 0]); on = !on; }
+    list.push([t1, 100]);
+    MV.keys(MV.tr(L, "opacity"), list, "hold");
+    return L;
+};
+
+// 25 明転 / 暗転: full-screen colour that fades out (flash) quickly
+MV.flash = function (comp, t, color, dur, peak) {
+    var L = MV.solid(comp, color || [1, 1, 1], "flash");
+    MV.span(L, t, t + (dur || 0.3) + comp.frameDuration);
+    MV.keys(MV.tr(L, "opacity"), [[t, peak || 100], [t + (dur || 0.3), 0]], "out");
+    return L;
+};
+
+// 15 中央から円ブワァ: rings that scale up from 0, each copy a little later and in another colour
+MV.burst = function (comp, t, colors, o) {
+    o = o || {};
+    var out = [], d = o.size || comp.width * 1.6;
+    for (var i = 0; i < colors.length; i++) {
+        var L = MV.shape(comp, "ellipse", [d, d], {fill: o.stroke ? null : colors[i], stroke: o.stroke ? colors[i] : null,
+                                                    strokeWidth: o.strokeWidth || 30, pos: o.pos, name: "burst" + i});
+        var t0 = t + MV.f(comp, (o.lag || 2) * i);
+        MV.span(L, t0, t0 + (o.dur || 0.6) + (o.hold || 0));
+        MV.keys(MV.tr(L, "scale"), [[t0, [0, 0]], [t0 + (o.dur || 0.6), [100, 100]]], "out");
+        out.push(L);
+    }
+    return out;
+};
+
+// 18 白枠フェードイン: thick outline frame that shrinks onto the subject while fading in
+MV.frameIn = function (comp, t, size, o) {
+    o = o || {};
+    var L = MV.shape(comp, "rect", size || [comp.width * 0.7, comp.height * 0.7],
+                     {stroke: o.color || [1, 1, 1], strokeWidth: o.width || 14, pos: o.pos, name: "frameIn"});
+    MV.keys(MV.tr(L, "scale"), [[t, [140, 140]], [t + (o.dur || 0.4), [100, 100]]], "out");
+    MV.keys(MV.tr(L, "opacity"), [[t, 0], [t + (o.dur || 0.4), 100]], "out");
+    return L;
+};
+
+// bands for vertical lyrics slamming in from the sides (black and white strips behind the text)
+MV.band = function (comp, t, x, w, color, from) {
+    var L = MV.shape(comp, "rect", [w, comp.height * 1.2], {fill: color || [0, 0, 0], pos: [x, comp.height / 2], name: "band"});
+    MV.slam(L, t, from || (x < comp.width / 2 ? "top" : "bottom"), 0.22);
+    return L;
+};
+
+// 26 小刻みブルブル (only for a moment): red and cyan copies of a text layer jitter around it, then vanish
+MV.rgbSplit = function (L, t0, t1, amp) {
+    var out = [], cols = [[1, 0, 0.2], [0, 0.9, 1]];
+    for (var i = 0; i < 2; i++) {
+        var d = L.duplicate();
+        d.moveAfter(L);
+        d.name = L.name + (i ? " cyan" : " red");
+        var td = d.property("ADBE Text Properties").property("ADBE Text Document"), v = td.value;
+        v.applyFill = true; v.fillColor = cols[i]; v.applyStroke = false;
+        td.setValue(v);
+        d.blendingMode = BlendingMode.SCREEN;
+        MV.span(d, t0, t1);
+        MV.expr(MV.tr(d, "position"), "wiggle(" + (12 - i * 3) + "," + (amp || 10) + ")");
+        out.push(d);
+    }
+    return out;
+};
+
+// 3 文字ブワァ開く: tracking from tight to wide with a fast start
+MV.openText = function (L, t, from, to, dur) {
+    var td = L.property("ADBE Text Properties").property("ADBE Text Document");
+    var a = MV.animator(L, {tracking: 1}, {});
+    a.props.tracking.setValue(0);
+    MV.keys(a.props.tracking, [[t, from === undefined ? -60 : from], [t + (dur || 0.5), to || 0]], "out");
+    return a;
+};
+
+// letters fly in one by one from random directions (A: "TAバラバラ" / B: 1文字ずつアニメーション)
+MV.scatterIn = function (L, t, dur, o) {
+    o = o || {};
+    var c = L.containingComp;
+    var a = MV.animator(L, {position: [0, 0, 0], rotation: 0, scale: [100, 100, 100], opacity: 0}, {random: true, shape: "rampUp", basedOn: "chars"});
+    MV.expr(a.props.position, "seedRandom(textIndex, true); [random(-1,1), random(-1,1), 0] * " + (o.dist || c.width * 0.4));
+    MV.expr(a.props.rotation, "seedRandom(textIndex + 99, true); random(-1,1) * " + (o.rot || 120));
+    a.props.scale.setValue(o.scale || [260, 260, 100]);
+    MV.keys(a.end, [[t, 100], [t + (dur || 0.5), 0]], "out");
+    a.start.setValue(0);
+    // the selector covers 0..end; shrinking end releases the letters into place in random order
+    return a;
+};
+
+// ノイズでグシャぁ: letters break apart (jitter, tilt, blur, fade) in random order
+MV.crumbleOut = function (L, t, dur, o) {
+    o = o || {};
+    var a = MV.animator(L, {position: [0, 0, 0], rotation: 0, blur: [0, 0], opacity: 0}, {random: true, basedOn: "chars"});
+    MV.expr(a.props.position, "seedRandom(textIndex, true); [random(-1,1)*" + (o.spread || 120) + ", random(0.2,1)*" + (o.fall || 260) + ", 0]");
+    MV.expr(a.props.rotation, "seedRandom(textIndex + 7, true); random(-1,1) * 90");
+    a.props.blur.setValue(o.blur || [18, 18]);
+    MV.keys(a.end, [[t, 0], [t + (dur || 0.6), 100]], "in");
+    return a;
+};
+
+// typewriter / character reveal with hold steps (for quiet verses)
+MV.typeOn = function (L, t, dur) {
+    var a = MV.animator(L, {opacity: 0}, {basedOn: "chars"});
+    a.selector.property("ADBE Text Range Advanced").property("ADBE Text Range Shape").setValue(1);
+    MV.keys(a.start, [[t, 0], [t + (dur || 1), 100]], "linear");
+    return a;
+};
+
+// 7 / 17 文字の中に絵: show `imgLayer` only inside the shape of `textLayer`
+MV.textMatte = function (imgLayer, textLayer) {
+    textLayer.moveBefore(imgLayer);
+    return MV.matte(imgLayer, textLayer, "alpha");
+};
+
+// 6 枠線クローン大量: outline-only copies stacked as lines
+MV.outlineClones = function (comp, str, n, o) {
+    o = o || {};
+    var lines = [];
+    for (var i = 0; i < n; i++) lines.push(str);
+    return MV.text(comp, lines.join("\r"), {font: o.font, size: o.size || 160, fill: null, stroke: o.color || [1, 1, 1],
+                                            strokeWidth: o.strokeWidth || 3, leading: o.leading || (o.size || 160) * 1.05,
+                                            pos: o.pos, name: "outline clones"});
+};
+
+// adjustment layer spanning the comp (for grades and short glitch bursts)
+MV.adjust = function (comp, name, tIn, tOut) {
+    var L = MV.solid(comp, [1, 1, 1], name || "adjust");
+    L.adjustmentLayer = true;
+    if (tIn !== undefined) MV.span(L, tIn, tOut);
+    return L;
+};

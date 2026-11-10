@@ -11,6 +11,7 @@
 #               downbeat tracking (Beat This!), lyric alignment (stable-ts), sections, energy.
 #   ae_script, ae_render        After Effects jobs, in mv_ae.py (v1.5)
 #   web_download, font_install  fonts and free assets, in mv_assets.py (v1.5)
+#   mv_cutout, ps_script        character cut-outs and Photoshop scripts, in mv_cutout.py (v1.6)
 #   model_download  saves one model file from Hugging Face into ComfyUI\models\<folder>\.
 #               Only https://huggingface.co/<repo>/resolve/... URLs, only the folders in
 #               MODEL_FOLDERS, only .safetensors / .gguf. Never overwrites an existing file;
@@ -32,9 +33,10 @@ def register(runner):
     global R
     R = runner
     handlers = {"mv_setup": h_mv_setup, "mv_analyze": h_mv_analyze, "model_download": h_model_download}
-    # v1.5: After Effects (mv_ae.py) and asset/font jobs (mv_assets.py). A broken or missing file only
+    # v1.5: After Effects (mv_ae.py) and asset/font jobs (mv_assets.py); v1.6: cut-outs and Photoshop
+    # (mv_cutout.py). A broken or missing file only
     # disables its own jobs.
-    for mod in ("mv_ae", "mv_assets"):
+    for mod in ("mv_ae", "mv_assets", "mv_cutout"):
         try:
             handlers.update(__import__(mod).register(runner))
         except Exception as e:
