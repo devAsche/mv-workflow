@@ -6,9 +6,18 @@ var MV = MV || {};
 
 // ---------------------------------------------------------------- project
 MV.newProject = function () {
-    // Never throw away the user's work: refuse when the open project has unsaved changes.
-    if (app.project && app.project.dirty && app.project.numItems > 0)
-        throw new Error("After Effects has an unsaved project open; save or close it first");
+    // Never throw away the user's work: refuse when the open project has unsaved changes, unless everything in
+    // it was made by these scripts (test comps named "MVテスト…", or a project the scripts saved under outbox).
+    var p = app.project;
+    if (p && p.dirty && p.numItems > 0) {
+        var ours = p.file && /[\\\/]autopilot[\\\/]outbox[\\\/]/i.test(p.file.fsName);
+        if (!ours) {
+            ours = true;
+            for (var i = 1; i <= p.numItems; i++) if (p.item(i).name.indexOf("MVテスト") !== 0) { ours = false; break; }
+        }
+        if (!ours) throw new Error("After Effects has an unsaved project open; save or close it first");
+        p.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+    }
     app.newProject();
     return app.project;
 };

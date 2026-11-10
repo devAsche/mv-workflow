@@ -1,7 +1,7 @@
 # After Effects job types for the autopilot runner (loaded by mv_jobs.register).
 #
-#   ae_script  hands an ExtendScript (.jsx) to After Effects with `AfterFX.exe -r`. If AE is
-#              already open the script goes to that window; otherwise AE starts and runs it.
+#   ae_script  hands an ExtendScript (.jsx) to After Effects with `AfterFX.com -r` (see "launch" below).
+#              If AE is already open the script goes to that window; otherwise AE starts and runs it.
 #              The script is wrapped so that errors are caught, dialogs are suppressed, and a
 #              done-file (JSON) is written into the job's output folder. The runner waits for
 #              that file instead of the AfterFX.exe process, which may keep running as AE itself.
@@ -150,13 +150,23 @@ def h_ae_script(ctx, j):
         os.remove(done)
     job = {"id": j["id"], "script": script, "lib": lib if (j.get("lib", True) and os.path.exists(lib)) else None,
            "outdir": ctx.dir, "workdir": os.path.dirname(script) if script else ctx.dir,
-           "params": j.get("params", {}), "done": done, "done_name": os.path.basename(done), "quit_after": bool(j.get("quit_after"))}
+           "params": j.get("params", {}), "launch": j.get("launch", R.CFG.get("ae_launch", "com")), "done": done, "done_name": os.path.basename(done), "quit_after": bool(j.get("quit_after"))}
     wrapper = ctx.out("_ae_wrapper.jsx")
     with open(wrapper, "w", encoding="utf-8-sig") as f:      # BOM: ExtendScript then reads the file as UTF-8
         f.write(WRAPPER % {"job": _js(job)})
     exe = _afterfx()
-    ctx.log("RUN", f'"{exe}" -r "{wrapper}"')
-    pr = subprocess.Popen([exe, "-r", wrapper], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # how the script reaches AE: "com" = AfterFX.com -r file (default), "s" = AfterFX.exe -s "$.evalFile(...)",
+    # "r" = AfterFX.exe -r file. Measured 2026-11-10 with AE 25.6 already open: com and s run the script within
+    # a second; AfterFX.exe -r never reached the running AE.
+    launch = j.get("launch", R.CFG.get("ae_launch", "com"))
+    if launch == "com":
+        cmd = [os.path.join(os.path.dirname(exe), "AfterFX.com"), "-r", wrapper]
+    elif launch == "s":
+        cmd = [exe, "-s", "$.evalFile(new File('%s'));" % wrapper.replace("\\", "/").replace("'", "\\'")]
+    else:
+        cmd = [exe, "-r", wrapper]
+    ctx.log("RUN", subprocess.list2cmdline(cmd))
+    pr = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     t0, timeout = time.time(), j.get("timeout", 900)
     while not os.path.exists(done):
         if time.time() - t0 > timeout:
