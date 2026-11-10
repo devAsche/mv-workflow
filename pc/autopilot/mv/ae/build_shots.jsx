@@ -8,13 +8,17 @@
 //   fonts: {main: ["GenEiKoburiMin6-R", ...], latin: [...]},   // first installed one wins
 //   type: {font: "main", hscale: 0.8, kana: 0.84, skew: 0, tracking: 0},   // defaults for every lyric (one typeface per song)
 //   shots: [{t0, t1, bg: {...}, char: {...}, texts: [...], fx: [...]}, ...],
-//   finish: {grade: {...}, vignette: 45},
+//   finish: {unify: {keep, amount, tol, soft, hue}, grade: {...}, vignette: 45},   // unify: one look over every shot (色抜き + hue)
 //   stills: [song times], save: "name.aep", render: "h264" | "tiff" | null
 // }
 // bg:    {img | solid, extra, move: [[t, scale%, [x, y]]...], ease, punch: {t, big, dur}, mono: {tint, amount}, keep, keepTol,
 //         blur, dim, blinds: {t, dur, angle, width}, mosaic: {t, dur, from}, jolt: [t0, t1, amp], kira: t}
 // bgs:   [bg, ...] with tIn/tOut each, when one shot changes its background
+//         pivot: [x, y] image px (anchor; move positions then place this point), rot: deg | [[t, deg]...], mirror: true (左右反転)
+//         hls: [hue, lightness, saturation] (カラーバランスHLS), ripple: {c: [x, y], r, w, h, speed} (波紋の呼吸 on a puddle)
 // char:  {img, h, pos, tIn, slam: {t, from, dur}, move: [[t, scale%]...], hops: [t...], hop: px, echo: {color, offset}, jolt: [t0, t1, amp]}
+// cut:   "C:\\...\\x_cut.png" - the cut-out of the bg image (same pixel size): built with the bg's own framing, moves and effects,
+//        so it sits exactly on the figure; lyrics with behind: true go between the bg and the cut-out (文字が人物の後ろに回る)
 // texts: {text, font, size, pos, fill, stroke, strokeWidth, tIn, tOut,
 //         mode: "line" | "chars" | "vchars",
 //         line:   words: [[text, start, end]...] (reveal word by word; popPct makes each word grow in), punch: {t, big}, open: {t, from, to, dur}, hop: {t, dur, h},
@@ -25,7 +29,8 @@
 //         both:   hscale, vscale, kana, skew (shape of the type), slice: [{t, shift, frac, dur}], stretchAt: [t, k], behind: true
 //                 (placed under the character cut-out)
 // fx:    {flash: t, color, dur, peak} | {burst: t, colors, pos, stroke} | {ring: t, pos, size, color, dur} |
-//        {frame: t, size, pos, color, width} | {bars: t, band, out} | {black: [t0, t1]} | {rule: t, pos, len, vertical, color, width, dur}
+//        {frame: t, size, pos, color, width} | {bars: t, band, out} | {black: [t0, t1]} | {rule: t, pos, len, vertical, color, width, dur} |
+//        {box: t, pos, size: [w, h], color, opacity, dur, out, vertical} (a plain panel under a lyric so it reads on any picture)
 //        (bars, frames and any fx with under: true are placed below the lyrics; the rest above)
 
 (function () {
@@ -61,12 +66,25 @@
         if (b.keep) MV.keepColor(L, col(b.keep), b.keepTol);
         if (b.blur) MV.blurFx(L, b.blur);
         if (b.dim) MV.dim(L, b.dim);
+        if (b.hls) MV.fx(L, "ADBE Color Balance (HLS)", {"ADBE Color Balance (HLS)-0001": b.hls[0] || 0,
+                                                          "ADBE Color Balance (HLS)-0002": b.hls[1] || 0, "ADBE Color Balance (HLS)-0003": b.hls[2] || 0});
+        if (b.ripple) {
+            var rp = MV.fx(L, "ADBE Ripple", {"ADBE Ripple-0001": b.ripple.r || 40, "ADBE Ripple-0002": b.ripple.c || [W / 2, H / 2],
+                                              "ADBE Ripple-0005": b.ripple.w || 30, "ADBE Ripple-0006": b.ripple.h || 12});
+            MV.expr(MV.findProp(rp, "ADBE Ripple-0007"), "time * " + (b.ripple.speed || 180));
+        }
+        if (b.pivot) MV.tr(L, "anchor").setValue(b.pivot);    // image px: moves then place this point, and rot turns around it
         var base = MV.tr(L, "scale").value[0];
         if (b.move) {
             var m = [];
             for (var i = 0; i < b.move.length; i++) m.push([T(b.move[i][0]), base * b.move[i][1] / 100, b.move[i][2] || null]);
             MV.move(L, m, b.ease || "inout");
         }
+        if (b.rot !== undefined) {
+            if (typeof b.rot === "number") MV.tr(L, "rotation").setValue(b.rot);
+            else { var rk = []; for (var ri = 0; ri < b.rot.length; ri++) rk.push([T(b.rot[ri][0]), b.rot[ri][1]]); MV.keys(MV.tr(L, "rotation"), rk, b.ease || "inout"); }
+        }
+        if (b.mirror) MV.expr(MV.tr(L, "scale"), "[-value[0], value[1]]");
         if (b.punch) MV.punch(L, T(b.punch.t), b.punch.big || 160, b.punch.dur || 0.3);
         if (b.blinds) MV.blindsIn(L, T(b.blinds.t), b.blinds.dur, b.blinds.angle, b.blinds.width);
         if (b.mosaic) MV.mosaicIn(L, T(b.mosaic.t), b.mosaic.dur, b.mosaic.from);
@@ -183,6 +201,13 @@
             return bs;
         }
         if (f.black) { var bl = MV.solid(comp, [0, 0, 0], "black"); spanRange(bl, T(f.black[0]), T(f.black[1])); return bl; }
+        if (f.box !== undefined) {
+            var bx = MV.shape(comp, "rect", f.size || [600, 120], {fill: col(f.color || "#0b1220"), pos: f.pos, name: "box"});
+            MV.tr(bx, "opacity").setValue(f.opacity !== undefined ? f.opacity : 80);
+            MV.keys(MV.tr(bx, "scale"), [[T(f.box), f.vertical ? [100, 0] : [0, 100]], [T(f.box) + (f.dur || 0.25), [100, 100]]], "out");
+            spanRange(bx, T(f.box), f.out !== undefined ? T(f.out) : z);
+            return bx;
+        }
         if (f.rule !== undefined) {
             var ru = MV.rule(comp, T(f.rule), f.pos, f.len || 400, f.vertical, col(f.color || "#ffd400"), f.width, f.dur);
             spanRange(ru, T(f.rule), f.out !== undefined ? T(f.out) : z);
@@ -197,8 +222,15 @@
         if (S.bg) buildBg(S.bg, a, z);
         for (var g = 0; S.bgs && g < S.bgs.length; g++) buildBg(S.bgs[g], a, z);
         var charL = S.char ? buildChar(S.char, a, z) : null;
+        if (S.cut && S.bg) {                        // the figure cut out of the bg, framed and moved exactly like the bg
+            var cb = {};
+            for (var ck in S.bg) if (S.bg.hasOwnProperty(ck)) cb[ck] = S.bg[ck];
+            cb.img = S.cut; cb.solid = undefined; cb.dim = S.cutDim !== undefined ? S.cutDim : S.bg.dim; cb.blur = undefined;
+            charL = buildBg(cb, a, z);
+            charL.name = "cut " + S.cut.replace(/^.*[\\\/]/, "");
+        }
         // bars and frames sit under the lyrics; flashes, bursts, rings and black frames go on top of everything
-        var under = function (f) { return f.bars !== undefined || f.frame !== undefined || f.under; };
+        var under = function (f) { return f.bars !== undefined || f.frame !== undefined || f.box !== undefined || f.under; };
         for (var u = 0; S.fx && u < S.fx.length; u++) if (under(S.fx[u])) buildFx(S.fx[u], a, z);
         for (var i = 0; S.texts && i < S.texts.length; i++) {
             var x = S.texts[i], xa = x.tIn !== undefined ? T(x.tIn) : a, xz = x.tOut !== undefined ? T(x.tOut) : z;
@@ -216,6 +248,15 @@
     }
 
     if (P.finish) {
+        if (P.finish.unify) {                       // one look over every shot: grey except one hue, then turn that hue
+            var u = P.finish.unify, UL = MV.adjust(comp, "unify");
+            MV.fx(UL, "ADBE Leave Color", {"ADBE Leave Color-0001": u.amount !== undefined ? u.amount : 85,
+                                          "ADBE Leave Color-0002": col(u.keep || "#e6d43c").concat([1]),
+                                          "ADBE Leave Color-0003": u.tol || 22, "ADBE Leave Color-0004": u.soft || 25,
+                                          "ADBE Leave Color-0005": 2});
+            if (u.hue) MV.fx(UL, "ADBE Color Balance (HLS)", {"ADBE Color Balance (HLS)-0001": u.hue,
+                                                              "ADBE Color Balance (HLS)-0003": u.sat || 0});
+        }
         if (P.finish.wash) MV.wash(comp, col(P.finish.wash.color), P.finish.wash.amount);
         if (P.finish.vignette) MV.vignette(comp, P.finish.vignette, P.finish.feather);
         if (P.finish.grade) MV.grade(comp, P.finish.grade);
