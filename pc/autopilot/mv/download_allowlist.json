@@ -1,0 +1,21 @@
+{
+ "note": "web_download only fetches from these hosts (and their subdomains), over https. Add a host only after checking the site's license for the files taken from it; the license goes into each job's \"license\" field and into _取得元.json.",
+ "hosts": [
+  "okoneya.jp",
+  "moji-waku.com",
+  "polyhaven.org",
+  "polyhaven.com",
+  "ambientcg.com",
+  "kenney.nl",
+  "pexels.com"
+ ],
+ "checked": {
+  "okoneya.jp": "源暎フォント: SIL OFL 1.1 (https://okoneya.jp/font/, 2026-11-10)",
+  "moji-waku.com": "マキナス等: 商用・映像・配信で使用可、クレジット不要、再配布と改変は不可 (https://moji-waku.com/mj_work_license/, 2026-11-10)",
+  "polyhaven.org": "CC0 (https://polyhaven.com/license, 2026-11-10)",
+  "polyhaven.com": "CC0 (https://polyhaven.com/license, 2026-11-10)",
+  "ambientcg.com": "CC0 1.0 (https://docs.ambientcg.com/license/, 2026-11-10)",
+  "kenney.nl": "CC0 (https://kenney.nl/support, 2026-11-10)",
+  "pexels.com": "Pexels License: 商用可・表記不要、無加工の転売や人物を悪く見せる使い方は不可 (https://www.pexels.com/license/, 2026-11-10)"
+ }
+}

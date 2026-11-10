@@ -9,7 +9,13 @@
 #               package list below. The runner's own venv is never touched.
 #   mv_analyze  runs mv\analyze.py inside venv-mv: vocal separation (Demucs), beat and
 #               downbeat tracking (Beat This!), lyric alignment (stable-ts), sections, energy.
-import json, os, subprocess, sys, time, urllib.request
+#   ae_script, ae_render        After Effects jobs, in mv_ae.py (v1.5)
+#   web_download, font_install  fonts and free assets, in mv_assets.py (v1.5)
+#   model_download  saves one model file from Hugging Face into ComfyUI\models\<folder>\.
+#               Only https://huggingface.co/<repo>/resolve/... URLs, only the folders in
+#               MODEL_FOLDERS, only .safetensors / .gguf. Never overwrites an existing file;
+#               an interrupted download resumes from its .part file.
+import hashlib, json, os, subprocess, sys, time, urllib.parse, urllib.request
 
 R = None   # the runner module, set by register()
 
@@ -25,7 +31,15 @@ MV_PACKAGES = [
 def register(runner):
     global R
     R = runner
-    return {"mv_setup": h_mv_setup, "mv_analyze": h_mv_analyze}
+    handlers = {"mv_setup": h_mv_setup, "mv_analyze": h_mv_analyze, "model_download": h_model_download}
+    # v1.5: After Effects (mv_ae.py) and asset/font jobs (mv_assets.py). A broken or missing file only
+    # disables its own jobs.
+    for mod in ("mv_ae", "mv_assets"):
+        try:
+            handlers.update(__import__(mod).register(runner))
+        except Exception as e:
+            print(f"{mod} not loaded ({e.__class__.__name__}: {e})", flush=True)
+    return handlers
 
 
 def _venv_dir():
@@ -97,3 +111,61 @@ def h_mv_analyze(ctx, j):
     return {"duration": t.get("duration"), "bpm": t.get("bpm"), "beats": len(t.get("beats", [])),
             "lines": len(t.get("lines", [])), "sections": [s["label"] for s in t.get("sections", [])],
             "devices": t.get("devices")}
+
+
+# ---------------------------------------------------------------- model_download
+MODEL_FOLDERS = ("diffusion_models", "text_encoders", "vae", "loras", "upscale_models")
+MODEL_EXTS = (".safetensors", ".gguf")
+
+
+def h_model_download(ctx, j):
+    """{"url": "https://huggingface.co/<repo>/resolve/<rev>/<path>", "folder": "loras", "filename": optional,
+        "sha256": optional} -> ComfyUI\\models\\<folder>\\<filename>"""
+    url = j["url"]
+    u = urllib.parse.urlparse(url)
+    if u.scheme != "https" or u.hostname != "huggingface.co" or "/resolve/" not in u.path:
+        raise PermissionError("only https://huggingface.co/<repo>/resolve/... URLs are allowed")
+    folder = j["folder"]
+    if folder not in MODEL_FOLDERS:
+        raise PermissionError(f"folder must be one of {MODEL_FOLDERS}")
+    name = j.get("filename") or os.path.basename(urllib.parse.unquote(u.path))
+    if any(c in name for c in '/\\:') or name.startswith(".") or not name.lower().endswith(MODEL_EXTS):
+        raise ValueError(f"bad filename: {name}")
+    dst = R.safe_path(os.path.join(R.CFG["comfy_dir"], "models", folder, name))
+    if os.path.exists(dst):
+        ctx.log("already there, not downloading:", dst)
+        return {"path": dst, "bytes": os.path.getsize(dst), "skipped": True}
+    part = dst + ".part"
+    have = os.path.getsize(part) if os.path.exists(part) else 0
+    headers = {"User-Agent": "autopilot-runner"}
+    if have:
+        headers["Range"] = f"bytes={have}-"
+    req = urllib.request.Request(url, headers=headers)
+    t0 = last = time.time()
+    with urllib.request.urlopen(req, timeout=120) as r:
+        if have and r.status != 206:          # server ignored Range: start over
+            have = 0
+        total = have + int(r.headers.get("Content-Length") or 0)
+        ctx.log(f"downloading {name} ({total / 1e9:.2f} GB) -> {dst}" + (f", resuming at {have / 1e9:.2f} GB" if have else ""))
+        with open(part, "ab" if have else "wb") as f:
+            done = have
+            while True:
+                chunk = r.read(8 << 20)
+                if not chunk:
+                    break
+                f.write(chunk); done += len(chunk)
+                if time.time() - last > 30:
+                    last = time.time()
+                    ctx.log(f"  {done / 1e9:.2f} / {total / 1e9:.2f} GB, {(done - have) / 1e6 / (last - t0):.1f} MB/s")
+    if total and os.path.getsize(part) != total:
+        raise RuntimeError(f"incomplete: {os.path.getsize(part)} of {total} bytes (run the job again to resume)")
+    if j.get("sha256"):
+        h = hashlib.sha256()
+        with open(part, "rb") as f:
+            for b in iter(lambda: f.read(16 << 20), b""):
+                h.update(b)
+        if h.hexdigest().lower() != j["sha256"].lower():
+            raise RuntimeError("sha256 mismatch; the .part file is kept for inspection")
+    os.replace(part, dst)
+    ctx.log("saved", dst)
+    return {"path": dst, "bytes": os.path.getsize(dst), "secs": int(time.time() - t0)}
