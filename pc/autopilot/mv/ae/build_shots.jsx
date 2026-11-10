@@ -21,6 +21,7 @@
 //         chars:  words (each character appears at its time), pop, drop, scatter: {t, dur, dist}, crumble: {t, dur}, x/top (vchars)}
 // fx:    {flash: t, color, dur, peak} | {burst: t, colors, pos, stroke} | {ring: t, pos, size, color, dur} |
 //        {frame: t, size, pos, color, width} | {bars: t, band, out} | {black: [t0, t1]}
+//        (bars, frames and any fx with under: true are placed below the lyrics; the rest above)
 
 (function () {
     var P = MVJOB.params, OFF = P.offset || 0, t0run = new Date().getTime();
@@ -164,12 +165,15 @@
         MV._seed = 1000 + s * 7919;                 // stable random layout per shot
         if (S.bg) buildBg(S.bg, a, z);
         if (S.char) buildChar(S.char, a, z);
+        // bars and frames sit under the lyrics; flashes, bursts, rings and black frames go on top of everything
+        var under = function (f) { return f.bars !== undefined || f.frame !== undefined || f.under; };
+        for (var u = 0; S.fx && u < S.fx.length; u++) if (under(S.fx[u])) buildFx(S.fx[u], a, z);
         for (var i = 0; S.texts && i < S.texts.length; i++) {
             var x = S.texts[i], xa = x.tIn !== undefined ? T(x.tIn) : a, xz = x.tOut !== undefined ? T(x.tOut) : z;
             if (x.mode === "chars" || x.mode === "vchars") buildChars(x, xa, xz);
             else buildLine(x, xa, xz);
         }
-        for (i = 0; S.fx && i < S.fx.length; i++) buildFx(S.fx[i], a, z);
+        for (i = 0; S.fx && i < S.fx.length; i++) if (!under(S.fx[i])) buildFx(S.fx[i], a, z);
         mvlog("shot " + (s + 1) + " " + S.t0 + "-" + S.t1 + " done, layers " + comp.numLayers);
     }
 
