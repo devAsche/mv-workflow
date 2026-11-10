@@ -27,7 +27,7 @@
     }
 
     MV.newProject();
-    var comp = MV.comp("probe", 1920, 1080, 3, 30, [0.05, 0.06, 0.1]);
+    var comp = MV.comp("MV_probe", 1920, 1080, 3, 30, [0.05, 0.06, 0.1]);
 
     // effect list and property trees (built-in Adobe and Cycore effects only)
     function dump(group, depth) {
@@ -42,20 +42,31 @@
         }
         return a;
     }
-    var solid = MV.solid(comp, [0.5, 0.5, 0.5], "fx probe");
+    // one grey solid receives each effect in turn; if AE invalidates it after a failed add, make a new one
+    var solid = null;
+    function freshSolid() {
+        try { if (solid) solid.remove(); } catch (x) {}
+        solid = MV.solid(comp, [0.5, 0.5, 0.5], "fx probe");
+    }
+    freshSolid();
     var effects = [], trees = {}, failed = [];
     for (i = 0; i < app.effects.length; i++) {
         var ef = app.effects[i];
         effects.push([ef.matchName, ef.displayName, ef.category]);
         if (!/^(ADBE |CC |APC )/.test(ef.matchName) || ef.category === "") continue;
         if (P.skip_trees) continue;
+        // effects that open a window when applied (seen 2026-11-10: Apply Color LUT, Basic Text) or start an analysis
+        if (/LUT|Stabiliz|Tracker|Roto|Refine|Content|Keylight|Basic Text|Path Text|Numbers/i.test(ef.matchName + " " + ef.displayName)) continue;
         try {
             var added = solid.property("ADBE Effect Parade").addProperty(ef.matchName);
             trees[ef.matchName] = {name: ef.displayName, category: ef.category, props: dump(added, 0)};
             added.remove();
-        } catch (e) { failed.push(ef.matchName + ": " + e); }
+        } catch (e) {
+            failed.push(ef.matchName + ": " + String(e));
+            try { freshSolid(); } catch (e2) { failed.push("new solid failed: " + String(e2)); }
+        }
     }
-    solid.remove();
+    try { solid.remove(); } catch (x) {}
     R.effects = effects.length;
     R.effect_trees = writeJSON("effects_dump.json", {effects: effects, trees: trees, failed: failed});
 
