@@ -9,7 +9,8 @@
 //   type: {font: "main", hscale: 0.8, kana: 0.84, skew: 0, tracking: 0},   // defaults for every lyric (one typeface per song)
 //   shots: [{t0, t1, bg: {...}, char: {...}, texts: [...], fx: [...]}, ...],
 //   finish: {grade: {...}, vignette: 45},
-//   stills: [song times], save: "name.aep", render: "h264" | "tiff" | null
+//   stills: [song times], save: "name.aep", render: "h264" | "tiff" | null,
+//   stillMode: "rq" (stills and qa frames through the render queue as TIFF, when saveFrameToPng does not write)
 // }
 // bg:    {img | solid, extra, move: [[t, scale%, [x, y]]...], ease, punch: {t, big, dur}, mono: {tint, amount}, keep, keepTol,
 //         blur, dim, blinds: {t, dur, angle, width}, mosaic: {t, dur, from}, jolt: [t0, t1, amp], kira: t,
@@ -20,7 +21,9 @@
 //         tile: {cols, rows, mirror, phase, slide: [px/s, px/s]}, mirror4, ripple: {c: [x, y], r, w, h, speed},
 //         ground: colour (a solid under the picture), win: {shape: rect|ellipse|eye, size: [w, h], pos, fit, border, width}
 //         (fit true: the whole picture sits small inside the window; false: the window looks onto the full-frame picture),
-//         inside: {img: cut-out PNG, h, pos, rim} (the picture shows only inside the silhouette)}
+//         inside: {img: cut-out PNG, h, pos, rim} (the picture shows only inside the silhouette),
+//         blend: "screen" | "add" | "multiply" | "overlay" | "soft_light" ... (a second picture laid over the first, in bgs),
+//         opacity: % | [[t, %]...], blur: px | [[t, px]...] (a rack focus)}
 // bgs:   [bg, ...] with tIn/tOut each, when one shot changes its background
 // shot:  also cut: cut-out PNG the same pixel size as bg.img (built with the bg's own framing, moves and effects except blur,
 //        so it sits exactly on the figure; lyrics with behind: true go between), cutDim: its dim (default the bg's), view: "face" | "eyes" | "hand" | "back" | "feet" | "item" |
@@ -35,14 +38,31 @@
 //                 image: {img, strobe: [t0, t1], kira: t, jolt: [t0, t1, amp], outline: color}, opacity, grow: [from%, to%]
 //         chars:  words (each character appears at its time), pop, stretch, drop, smear: {dur, angle, len}, strobe: [t0, t1],
 //                 scatter: {t, dur, dist}, crumble: {t, dur}, x/top (vchars)}
+//         write:  handwritten (accent words): hand: key in params.hand (or the word itself: {chars: [{char, strokes, drips}], bbox,
+//                 lines}), times: [song time each character starts], durs: [s] | dur, size: height of the word in px, width: pen px,
+//                 drips, dripDur, lines: {t, dur, width, opacity, gap} (the title's hairlines), rough, taper, move: [[t, scale%, [x, y]]],
+//                 fade: [t0, t1], accent: true (plan_check counts it)
+//         staff:  lyric characters falling onto wires that ring and carry them left (a scrolling score): words: [[char, start]...],
+//                 wires: [wire index per character], xs: [landing x per character], ys: [y per wire], slope, sag, flow (px/s), amp,
+//                 dipW, ring, drops: [{t, wire, x, amp}] (drops without letters), wireColor, wireWidth, wireOpacity, lift, fall, bead
 //         both:   hscale, vscale, kana, skew (shape of the type), slice: [{t, shift, frac, dur}], stretchAt: [t, k], behind: true
 //                 (placed under the character cut-out), plate: "strip" | "box" | "scrim" | "halo" or {kind, color, opacity, pad, dur}
 //                 (something under the letters so they read on any picture; type.plate sets it for every lyric), qa: false
 // fx:    {flash: t, color, dur, peak} | {burst: t, colors, pos, stroke} | {ring: t, pos, size, color, dur} |
 //        {frame: t, size, pos, color, width} | {bars: t, band, out, still} (still: no slam, for a letterbox kept across cuts) | {black: [t0, t1]} | {rule: t, pos, len, vertical, color, width, dur} |
 //        {drops: t | [t...], pos: [x, y] | [[x, y]...], area: [x0, y0, x1, y1], rings, size, color, squash, dur} (raindrop rings) |
-//        {box: t, pos, size: [w, h], color, opacity, dur, out, vertical, wipe} (a dark box under lyrics)
-//        (bars, frames, drops, boxes and any fx with under: true are placed below the lyrics; the rest above)
+//        {box: t, pos, size: [w, h], color, opacity, dur, out, vertical, wipe} (a dark box under lyrics) |
+//        bars also take to: band height and at: [t0, t1] (the band narrows) |
+//        {rain: [t0, t1] | true, layer: "far" | "mid" | "near", speed, angle, sw, sh, contrast, brightness, blur, soft, color, opacity,
+//         evolve, seed} (drawn rain; near rain goes over the lyrics, far and mid under) |
+//        {light: [t0, t1], from: [x, y], to: [x, y], size: [w, h], angle, color, peak, blur, glow} (a light sliding past) |
+//        {splash: t | [t...], pos: [x, y] | [[x, y]...], n, r0, r1, width, color, dur, dir, spread, squash} (drops bursting) |
+//        {slide: t, from, to, size, color, dur, trail} (a drop running down) | {pole: [t0, t1], x: [from, to], w, color, blur, arm}
+//        (a dark pole crossing in front of everything)
+//        (bars, frames, drops, boxes, far/mid rain, lights, splashes, slides and any fx with under: true are placed below the
+//        lyrics; the rest above)
+// top:   [fx...] built after every shot, over the whole piece (a rain layer that runs through every cut)
+// hand:  {key: word} the handwritten words texts in mode "write" refer to (kept out of this public file)
 // finish: {tone: {hi, mid, lo, mix}, unify: {keep, amount, tol, soft, hue, sat}, wash: {color, amount}, vignette, feather, grade: {...}}
 // pass:  "plate" builds everything but the lyrics, for tools/motion_check.py to judge the pictures alone
 // result.upscale lists picture layers scaled past 105% of their own pixels at any key (they look soft; v4 review)
@@ -57,6 +77,7 @@
     function out(name) { return MVJOB.outdir + "\\" + name; }
 
     MV.newProject();
+    if (P.stillMode) MV.STILL_MODE = P.stillMode;          // "rq": stills through the render queue (TIFF)
     var comp = MV.comp(P.name || "MV_build", P.w, P.h, P.dur, P.fps, [0, 0, 0]);
     var W = comp.width, H = comp.height;
 
@@ -93,7 +114,11 @@
         if (b.mono) MV.mono(L, col(b.mono.tint), b.mono.amount);
         if (b.keep) MV.keepColor(L, col(b.keep), b.keepTol);
         if (b.hls) MV.hls(L, b.hls);
-        if (b.blur) MV.blurFx(L, b.blur);
+        if (b.blur instanceof Array) {
+            var be = MV.blurFx(L, 0), bk = [];
+            for (var bi = 0; bi < b.blur.length; bi++) bk.push([T(b.blur[bi][0]), b.blur[bi][1]]);
+            MV.keys(MV.findProp(be, "ADBE Gaussian Blur 2-0001"), bk, "inout");
+        } else if (b.blur) MV.blurFx(L, b.blur);
         if (b.dim) MV.dim(L, b.dim);
         if (b.tile) MV.tile(L, b.tile.cols, b.tile.rows, b.tile);
         if (b.mirror4) MV.mirror4(L);
@@ -122,6 +147,12 @@
         if (b.mosaic) MV.mosaicIn(L, T(b.mosaic.t), b.mosaic.dur, b.mosaic.from);
         if (b.jolt) MV.jolt(L, T(b.jolt[0]), T(b.jolt[1]), 24, b.jolt[2] || 20);
         if (b.kira !== undefined) MV.kira(L, T(b.kira), 5);
+        if (b.blend) MV.blendMode(L, b.blend);
+        if (b.opacity instanceof Array) {
+            var ok = [];
+            for (var oi = 0; oi < b.opacity.length; oi++) ok.push([T(b.opacity[oi][0]), b.opacity[oi][1]]);
+            MV.keys(MV.tr(L, "opacity"), ok, "inout");
+        } else if (b.opacity !== undefined) MV.tr(L, "opacity").setValue(b.opacity);
         if (win) MV.windowOn(comp, L, win.shape || "rect", win.size, win.pos || [W / 2, H / 2], {border: col(win.border), width: win.width});
         if (b.inside) MV.insideOf(comp, L, b.inside.img, {h: b.inside.h, pos: b.inside.pos, rim: col(b.inside.rim)});
         return L;
@@ -131,7 +162,7 @@
     function buildCut(bg, path, dimV, a, z) {
         var cb = {};
         for (var ck in bg) if (bg.hasOwnProperty(ck)) cb[ck] = bg[ck];
-        cb.img = path; cb.solid = undefined; cb.blur = undefined; cb.ground = undefined;
+        cb.img = path; cb.solid = undefined; cb.blur = undefined; cb.ground = undefined; cb.blend = undefined; cb.opacity = undefined;
         cb.dim = dimV !== undefined ? dimV : bg.dim;
         var c = buildBg(cb, a, z);
         c.name = "cut " + path.replace(/^.*[\\\/]/, "");
@@ -218,7 +249,7 @@
         if (x.words) {
             var times = MV.charTimes(x.words);
             for (var i = 0; i < times.length; i++) times[i] = T(times[i]);
-            MV.charsAt(chars, times, {pop: x.pop || 1.4, stretch: x.stretch, drop: x.drop, dur: x.popDur});
+            MV.charsAt(chars, times, {pop: x.pop || 1.4, stretch: x.stretch, drop: x.drop, dur: x.popDur, from: a, until: z});
             if (x.smear) for (var m = 0; m < chars.length; m++)
                 MV.smear(chars[m], times[Math.min(m, times.length - 1)], x.smear.dur, x.smear.angle, x.smear.len);
         }
@@ -228,6 +259,46 @@
         if (x.crumble) MV.crumbleOut(chars, T(x.crumble.t), {dur: x.crumble.dur, spread: x.crumble.spread});
         if (x.hopAt) for (var h = 0; h < chars.length; h++) MV.bounce(chars[h], T(x.hopAt) + h * 0.05, 0.3, x.hopH || 40);
         return chars;
+    }
+
+    // handwritten word (accent): strokes from params.hand, written at the given song times
+    function buildWrite(x, a, z) {
+        var word = typeof x.hand === "string" ? (P.hand || {})[x.hand] : x.hand;
+        if (!word) throw new Error("no handwritten word: " + x.hand);
+        var times = [], i;
+        for (i = 0; x.times && i < x.times.length; i++) times.push(T(x.times[i]));
+        if (!times.length) times.push(a);
+        var r = MV.write(comp, word, {pos: x.pos, h: x.size || 300, width: x.width, color: col(x.fill || "#ffffff"), times: times,
+                                      durs: x.durs, dur: x.dur, drips: x.drips, dripDur: x.dripDur, rough: x.rough, ease: x.ease,
+                                      taper: x.taper, corner: x.corner, name: x.name || x.text,
+                                      lines: x.lines ? {t: T(x.lines.t), dur: x.lines.dur, width: x.lines.width, opacity: x.lines.opacity, gap: x.lines.gap} : null});
+        var L = r.layer;
+        L.outPoint = z;
+        if (L.inPoint < a) L.inPoint = a;
+        if (x.opacity !== undefined) MV.tr(L, "opacity").setValue(x.opacity);
+        if (x.move) {
+            var base = MV.tr(L, "scale").value[0], m = [];
+            for (i = 0; i < x.move.length; i++) m.push([T(x.move[i][0]), base * x.move[i][1] / 100, x.move[i][2] || null]);
+            MV.move(L, m, x.ease === "out" ? "out" : "inout");
+        }
+        if (x.fade) MV.keys(MV.tr(L, "opacity"), [[T(x.fade[0]), x.opacity === undefined ? 100 : x.opacity], [T(x.fade[1]), 0]], "inout");
+        return {layer: L, end: r.end};
+    }
+
+    // characters that fall onto wires and ride them left
+    function buildStaff(x, a, z) {
+        var notes = [], drops = [], i;
+        for (i = 0; i < x.words.length; i++) {
+            var c = x.words[i][0].replace(/[ 　]/g, "");
+            if (!c) continue;
+            notes.push({t: T(x.words[i][1]), wire: x.wires[Math.min(i, x.wires.length - 1)], x: x.xs[Math.min(i, x.xs.length - 1)], text: c, amp: x.amp});
+        }
+        for (i = 0; x.drops && i < x.drops.length; i++)
+            drops.push({t: T(x.drops[i].t), wire: x.drops[i].wire, x: x.drops[i].x, amp: x.drops[i].amp});
+        return MV.staff(comp, {ys: x.ys, slope: x.slope, sag: x.sag, flow: x.flow, dipW: x.dipW, ring: x.ring, amp: x.amp,
+                               color: col(x.wireColor), width: x.wireWidth, opacity: x.wireOpacity, notes: notes, drops: drops,
+                               font: font(pick(x, "font", null)), size: x.size || 56, fill: col(x.fill || "#ffffff"), hscale: pick(x, "hscale", 1),
+                               lift: x.lift, fall: x.fall, fallDur: x.fallDur, bead: x.bead, tIn: a, tOut: z});
     }
 
     // a time when a lyric has fully appeared and has not started to leave (plate sizes and the contrast check use it)
@@ -275,6 +346,13 @@
                 bs = [MV.shape(comp, "rect", [W * 1.2, bh + 4], {fill: bc, pos: [W / 2, bh / 2 - 2], name: "bar top"}),
                       MV.shape(comp, "rect", [W * 1.2, bh + 4], {fill: bc, pos: [W / 2, H - bh / 2 + 2], name: "bar bottom"})];
             } else bs = MV.bars(comp, T(f.bars), f.band || 420, {dur: f.dur});
+            if (f.to !== undefined) {                 // the band narrows (or opens) between at[0] and at[1]
+                var at = f.at || [f.bars + 0.4, f.bars + 1.6], dd = ((f.band || 420) - f.to) / 2;
+                for (var bk2 = 0; bk2 < 2; bk2++) {
+                    var bp = MV.tr(bs[bk2], "position"), bv = bp.valueAtTime(T(at[0]), false);
+                    MV.keys(bp, [[T(at[0]), bv], [T(at[1]), [bv[0], bv[1] + (bk2 ? -dd : dd)]]], "inout");
+                }
+            }
             MV.spanAll(bs, T(f.bars), f.out !== undefined ? T(f.out) : z);
             return bs;
         }
@@ -294,6 +372,27 @@
             return bx;
         }
         if (f.black) { var bl = MV.solid(comp, [0, 0, 0], "black"); spanRange(bl, T(f.black[0]), T(f.black[1])); return bl; }
+        if (f.rain !== undefined) {
+            var rl = MV.rain(comp, {layer: f.layer, speed: f.speed, angle: f.angle, sw: f.sw, sh: f.sh, contrast: f.contrast,
+                                    brightness: f.brightness, blur: f.blur, blurDir: f.blurDir, soft: f.soft, color: col(f.color),
+                                    opacity: f.opacity, evolve: f.evolve, seed: f.seed, cover: f.cover});
+            spanRange(rl, f.rain instanceof Array ? T(f.rain[0]) : a, f.rain instanceof Array ? T(f.rain[1]) : z);
+            if (f.fade) MV.keys(MV.tr(rl, "opacity"), [[T(f.fade[0]), f.fade[2] === undefined ? 0 : f.fade[2]], [T(f.fade[1]), f.fade[3] === undefined ? MV.tr(rl, "opacity").value : f.fade[3]]], "inout");
+            return rl;
+        }
+        if (f.light !== undefined) return MV.lightSweep(comp, T(f.light[0]), T(f.light[1]), f.from, f.to,
+                                                        {size: f.size, angle: f.angle, color: col(f.color), peak: f.peak, blur: f.blur, glow: f.glow, ease: f.ease});
+        if (f.splash !== undefined) {
+            var sts = f.splash instanceof Array ? f.splash : [f.splash], sp = [];
+            for (var si = 0; si < sts.length; si++) {
+                var spos = f.pos ? (f.pos[0] instanceof Array ? f.pos[si % f.pos.length] : f.pos) : [W / 2, H / 2];
+                sp.push(MV.splash(comp, T(sts[si]), spos, {n: f.n, r0: f.r0, r1: f.r1, width: f.width, color: col(f.color), dur: f.dur,
+                                                            dir: f.dir, spread: f.spread, squash: f.squash, opacity: f.opacity}));
+            }
+            return sp;
+        }
+        if (f.slide !== undefined) return MV.slideDrop(comp, T(f.slide), f.from, f.to, {size: f.size, color: col(f.color), dur: f.dur, trail: f.trail});
+        if (f.pole !== undefined) return MV.pole(comp, T(f.pole[0]), T(f.pole[1]), {x: f.x, w: f.w, color: col(f.color), blur: f.blur, arm: f.arm, ease: f.ease});
         if (f.rule !== undefined) {
             var ru = MV.rule(comp, T(f.rule), f.pos, f.len || 400, f.vertical, col(f.color || "#ffd400"), f.width, f.dur);
             spanRange(ru, T(f.rule), f.out !== undefined ? T(f.out) : z);
@@ -311,12 +410,25 @@
         var charL = S.char ? buildChar(S.char, a, z) : null;
         var cutL = S.cut && S.bg ? buildCut(S.bg, S.cut, S.cutDim, a, z) : null, fg = cutL || charL;
         // bars, frames, drops and boxes sit under the lyrics; flashes, bursts, rings and black frames go on top of everything
-        var under = function (f) { return f.bars !== undefined || f.frame !== undefined || f.drops !== undefined || f.box !== undefined || f.under; };
+        var under = function (f) {
+            if (f.over) return false;
+            return f.bars !== undefined || f.frame !== undefined || f.drops !== undefined || f.box !== undefined || f.light !== undefined ||
+                   f.splash !== undefined || f.slide !== undefined || (f.rain !== undefined && f.layer !== "near") || f.under;
+        };
         for (var u = 0; S.fx && u < S.fx.length; u++) if (under(S.fx[u])) buildFx(S.fx[u], a, z);
         for (var i = 0; S.texts && P.pass !== "plate" && i < S.texts.length; i++) {
             var x = S.texts[i], xa = x.tIn !== undefined ? T(x.tIn) : a, xz = x.tOut !== undefined ? T(x.tOut) : z;
-            var before = comp.numLayers, groups, imageText = false, ts = settle(x, xa, xz);
-            if (x.mode === "chars" || x.mode === "vchars") {
+            var before = comp.numLayers, groups, imageText = false, ts = settle(x, xa, xz), qaOnly = null;
+            if (x.mode === "write") {
+                var wr = buildWrite(x, xa, xz);
+                groups = [[wr.layer]];
+                ts = Math.max(xa + comp.frameDuration, Math.min(wr.end + 0.1, xz - 2 * comp.frameDuration));
+            } else if (x.mode === "staff") {
+                var sf = buildStaff(x, xa, xz);
+                groups = [sf.notes];
+                qaOnly = sf.notes.concat(sf.beads);
+                ts = Math.max(xa + comp.frameDuration, Math.min(T(x.words[x.words.length - 1][1]) + 0.4, xz - 2 * comp.frameDuration));
+            } else if (x.mode === "chars" || x.mode === "vchars") {
                 var chs = buildChars(x, xa, xz);
                 groups = x.mode === "vchars" ? columns(chs, ts, x.size || 90) : [chs];
             } else {
@@ -333,16 +445,19 @@
                 MV.plate(comp, groups, ts, {kind: pl.kind, color: col(pl.color), opacity: pl.opacity, pad: pl.pad, dur: pl.dur, soft: pl.soft,
                                             wipe: pl.wipe, size: x.size || 120});
             if (P.qa && x.qa !== false) {
-                var shown = [];
-                for (q = 0; q < made.length; q++) if (made[q].enabled) shown.push(made[q]);
+                var shown = [], cand = qaOnly || made;
+                for (q = 0; q < cand.length; q++) if (cand[q].enabled) shown.push(cand[q]);
                 QA.push({layers: shown, t: ts, shot: s + 1, text: i + 1, label: x.name || x.text, plate: pl ? pl.kind : null,
-                         size: x.size || 120, mode: x.mode || "line", fill: imageText ? null : (x.fill === undefined ? "#ffffff" : x.fill),
+                         size: x.size || 120, mode: x.mode || "line", fill: imageText ? null : (x.fill === undefined ? "#ffffff" : x.fill), accent: !!x.accent,
                          stroke: x.stroke || null});
             }
         }
         for (i = 0; S.fx && i < S.fx.length; i++) if (!under(S.fx[i])) buildFx(S.fx[i], a, z);
         mvlog("shot " + (s + 1) + " " + S.t0 + "-" + S.t1 + " done, layers " + comp.numLayers);
     }
+
+    MV._seed = 99991;
+    for (var tp = 0; P.top && tp < P.top.length; tp++) buildFx(P.top[tp], 0, comp.duration);
 
     // pictures blown up past their own pixels look soft (v4 review: 225-300% on a 2016 px picture)
     var UP = [];

@@ -244,7 +244,33 @@ MV.waitFile = function (path, secs) {
     return f.exists;
 };
 
+// one frame through the render queue, as TIFF (AE 25.6 has no PNG output template): path "x.png" writes "x.tif".
+// For when saveFrameToPng stops writing (2026-11-12: the call returned and no file ever appeared, even for a plain solid).
+MV.stillRQ = function (comp, t, path) {
+    var rq = app.project.renderQueue, i;
+    for (i = 1; i <= rq.numItems; i++) { try { if (rq.item(i).status === RQItemStatus.QUEUED) rq.item(i).render = false; } catch (e) {} }
+    var it = rq.items.add(comp);
+    it.timeSpanStart = t;
+    it.timeSpanDuration = comp.frameDuration;
+    var om = it.outputModule(1), tpl = MV.findTemplate(om.templates, ["TIFF"]);
+    if (!tpl) throw new Error("no TIFF output template in: " + om.templates.join(" | "));
+    om.applyTemplate(tpl);
+    var base = path.replace(/\.(png|tif)$/i, ""), dir = new File(base).parent;
+    if (!dir.exists) dir.create();
+    om.file = new File(base + "_[#####].tif");
+    rq.render();
+    var name = new File(base).name, got = dir.getFiles(name + "_*.tif"), out = base + ".tif";
+    try { it.remove(); } catch (e) {}
+    if (!got.length) throw new Error("render-queue still not written: " + out);
+    var g = got[got.length - 1], o = new File(out);
+    if (o.exists) o.remove();
+    g.rename(o.name);
+    return o.fsName;
+};
+
+MV.STILL_MODE = "png";           // "rq": every still through the render queue (TIFF)
 MV.still = function (comp, t, path) {   // one frame to PNG (for quick checks, no render queue)
+    if (MV.STILL_MODE === "rq") return MV.stillRQ(comp, t, path);
     var f = new File(path);
     if (!f.parent.exists) f.parent.create();
     comp.saveFrameToPng(t, f);
@@ -506,11 +532,15 @@ MV.crumbleOut = function (chars, t, o) {
     return chars;
 };
 
-// each letter appears at its own time: times[i] for chars[i] (lyric timing), with a small pop
+// each letter appears at its own time: times[i] for chars[i] (lyric timing), with a small pop. o.from: letters sung before
+// this time (a line carried over a cut) are there from the start without popping again; o.until: letters sung at or after
+// it (the next shot's) are switched off here
 MV.charsAt = function (chars, times, o) {
     o = o || {};
     for (var i = 0; i < chars.length; i++) {
         var L = chars[i], ti = times[Math.min(i, times.length - 1)];
+        if (o.until !== undefined && ti >= o.until - 0.001) { L.enabled = false; continue; }
+        if (o.from !== undefined && ti <= o.from + 0.001) { L.inPoint = Math.max(L.inPoint, o.from); continue; }
         L.inPoint = Math.max(0, ti);
         var s = MV.tr(L, "scale").valueAtTime(ti, false);
         if (o.stretch) MV.keys(MV.tr(L, "scale"), [[ti, [s[0] * 0.85, s[1] * o.stretch]], [ti + (o.dur || 0.12), s]], "out");
@@ -1025,11 +1055,11 @@ MV.mirror4 = function (L) {
 MV.ripple = function (L, o) {
     o = o || {};
     var cc = L.containingComp, c = o.c || [cc.width / 2, cc.height / 2], sp = o.speed || 180;
-    var e = MV.fx(L, "ADBE Ripple", {"ADBE Ripple-0001": o.r || 40, "ADBE Ripple-0002": c, "ADBE Ripple-0005": o.w || 30, "ADBE Ripple-0006": o.h || 12});
+    var e = MV.fx(L, "ADBE Ripple", {"ADBE Ripple-0001": Math.min(100, o.r || 40), "ADBE Ripple-0002": c, "ADBE Ripple-0005": Math.min(100, o.w || 30), "ADBE Ripple-0006": o.h || 12});
     MV.expr(MV.findProp(e, "ADBE Ripple-0007"), "time * " + sp);
     if (o.second) {
         var e2 = MV.fx(L, "ADBE Ripple", {"ADBE Ripple-0001": (o.r || 40) * 0.6, "ADBE Ripple-0002": [c[0] * 0.7, c[1] * 1.05],
-                                            "ADBE Ripple-0003": 2, "ADBE Ripple-0005": (o.w || 30) * 1.6, "ADBE Ripple-0006": (o.h || 12) * 0.5});
+                                            "ADBE Ripple-0003": 2, "ADBE Ripple-0005": Math.min(100, (o.w || 30) * 1.6), "ADBE Ripple-0006": (o.h || 12) * 0.5});
         MV.expr(MV.findProp(e2, "ADBE Ripple-0007"), "time * " + (sp * 0.7));
     }
     return e;
@@ -1115,4 +1145,310 @@ MV.tone = function (comp, o) {
     var L = MV.adjust(comp, "tone");
     MV.tritone(L, o.hi || [0.96, 0.95, 0.9], o.mid || [0.36, 0.42, 0.55], o.lo || [0.03, 0.04, 0.09], 100 - (o.mix === undefined ? 35 : o.mix));
     return L;
+};
+
+// ================================================================ v1.9: drawn rain, handwriting, wires as a staff, light, splashes
+// For 雨粒パレード v5 (2026-11-12). The look plan keeps rain out of the generated pictures and draws it here; the accent
+// words are written stroke by stroke in the hand of the jacket's title; one chorus line turns electric wires into a staff.
+// Shape-layer gotcha: adding a property to a group can invalidate references to its siblings, so values are set right
+// after each addProperty and anything needed later is looked up again by matchName.
+
+MV.lit = function (v) {          // a number / array literal for expression code
+    if (v instanceof Array) { var a = []; for (var i = 0; i < v.length; i++) a.push(MV.lit(v[i])); return "[" + a.join(",") + "]"; }
+    return typeof v === "number" ? String(Math.round(v * 10000) / 10000) : String(v);
+};
+
+MV.blendMode = function (L, name) {
+    var m = {normal: BlendingMode.NORMAL, add: BlendingMode.ADD, screen: BlendingMode.SCREEN, multiply: BlendingMode.MULTIPLY,
+             overlay: BlendingMode.OVERLAY, soft_light: BlendingMode.SOFT_LIGHT, hard_light: BlendingMode.HARD_LIGHT,
+             lighten: BlendingMode.LIGHTEN, darken: BlendingMode.DARKEN, color_dodge: BlendingMode.COLOR_DODGE,
+             linear_dodge: BlendingMode.LINEAR_DODGE, luminosity: BlendingMode.LUMINOSITY};
+    var k = String(name).toLowerCase().replace(/[ \-]/g, "_");
+    if (!m[k]) throw new Error("unknown blend mode: " + name);
+    L.blendingMode = m[k];
+    return L;
+};
+
+// a path through points; a turn sharper than `corner` degrees stays a corner, the rest are smoothed
+MV.pathFrom = function (pts, closed, corner) {
+    var s = new Shape(), n = pts.length, vin = [], vout = [], lim = Math.cos((corner || 55) * Math.PI / 180);
+    for (var i = 0; i < n; i++) {
+        var t = [0, 0], a = i > 0 ? pts[i - 1] : (closed ? pts[n - 1] : null), b = i < n - 1 ? pts[i + 1] : (closed ? pts[0] : null);
+        if (a && b) {
+            var ux = pts[i][0] - a[0], uy = pts[i][1] - a[1], vx = b[0] - pts[i][0], vy = b[1] - pts[i][1];
+            var lu = Math.sqrt(ux * ux + uy * uy) || 1, lv = Math.sqrt(vx * vx + vy * vy) || 1;
+            if ((ux * vx + uy * vy) / (lu * lv) > lim) {
+                var dx = b[0] - a[0], dy = b[1] - a[1], dl = Math.sqrt(dx * dx + dy * dy) || 1, k = Math.min(lu, lv) / 3 / dl;
+                t = [dx * k, dy * k];
+            }
+        }
+        vin.push([-t[0], -t[1]]);
+        vout.push([t[0], t[1]]);
+    }
+    s.vertices = pts; s.inTangents = vin; s.outTangents = vout; s.closed = !!closed;
+    return s;
+};
+
+// one pen stroke in shape layer L: a group with the path, Trim Paths and a round stroke. o: {width, color, opacity, corner,
+// t0, t1 (Trim End 0 -> 100), s0, s1 (Trim Start 0 -> 100, a stroke that leaves), ease, taper: end taper on, name}
+MV.penStroke = function (L, pts, o) {
+    o = o || {};
+    var g = L.property("ADBE Root Vectors Group").addProperty("ADBE Vector Group");
+    if (o.name) g.name = o.name;
+    var v = g.property("ADBE Vectors Group");
+    v.addProperty("ADBE Vector Shape - Group").property("ADBE Vector Shape").setValue(MV.pathFrom(pts, false, o.corner));
+    v.addProperty("ADBE Vector Filter - Trim");
+    var st = v.addProperty("ADBE Vector Graphic - Stroke");
+    st.property("ADBE Vector Stroke Color").setValue(o.color || [1, 1, 1]);
+    st.property("ADBE Vector Stroke Width").setValue(o.width || 6);
+    st.property("ADBE Vector Stroke Line Cap").setValue(2);
+    st.property("ADBE Vector Stroke Line Join").setValue(2);
+    if (o.opacity !== undefined) st.property("ADBE Vector Stroke Opacity").setValue(o.opacity);
+    if (o.taper) {                    // AE 17+: thin out the stroke's end like a brush lifting (skipped when not there)
+        try {
+            var te = MV.findProp(st, "ADBE Vector Taper End Length"), tw = MV.findProp(st, "ADBE Vector Taper End Width");
+            if (te && tw) { te.setValue(o.taper === true ? 35 : o.taper); tw.setValue(15); }
+        } catch (e) {}
+    }
+    var tr = v.property("ADBE Vector Filter - Trim");
+    if (o.t0 !== undefined) MV.keys(tr.property("ADBE Vector Trim End"), [[o.t0, 0], [o.t1, 100]], o.ease || "out");
+    if (o.s0 !== undefined) MV.keys(v.property("ADBE Vector Filter - Trim").property("ADBE Vector Trim Start"), [[o.s0, 0], [o.s1, 100]], o.ease || "out");
+    return g;
+};
+
+// 手書きで書く: a word as pen strokes, written stroke by stroke in writing order. word (hand.json): {chars: [{char, strokes:
+// [[[x, y]...]...], drips: [[x, y, len]...]}], bbox: [x0, y0, x1, y1], lines: [[[x, y]...]...]} in its own units.
+// o: {pos: screen point for the bbox centre, h: bbox height in px, width: pen px, color, times: [start of each character],
+// durs: [seconds per character] | dur, drips (default on), dripDur, lines: {t, dur, width, opacity}, rough, ease, name}
+// Returns {layer, end}.
+MV.write = function (comp, word, o) {
+    o = o || {};
+    var b = word.bbox, k = (o.h || 300) / (b[3] - b[1]), cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2;
+    function P(p) { return [(p[0] - cx) * k, (p[1] - cy) * k]; }
+    function plen(pts) { var s = 0; for (var q = 1; q < pts.length; q++) s += Math.sqrt(Math.pow(pts[q][0] - pts[q - 1][0], 2) + Math.pow(pts[q][1] - pts[q - 1][1], 2)); return s; }
+    var L = comp.layers.addShape();
+    L.name = o.name || "write";
+    MV.tr(L, "anchor").setValue([0, 0]);
+    MV.tr(L, "position").setValue(o.pos || [comp.width / 2, comp.height / 2]);
+    var w = o.width || Math.max(2, (o.h || 300) * 0.03), col = o.color || [1, 1, 1], times = o.times || [0], end = 0, first = 1e9, c, i, j;
+    for (c = 0; c < word.chars.length; c++) {
+        var ch = word.chars[c], dc = o.durs ? o.durs[Math.min(c, o.durs.length - 1)] : (o.dur || 0.3);
+        var tc = c < times.length ? times[c] : times[times.length - 1] + (c - times.length + 1) * dc;
+        var strokes = [], tot = 0, acc = 0;
+        for (i = 0; i < ch.strokes.length; i++) {
+            var pts = [];
+            for (j = 0; j < ch.strokes[i].length; j++) pts.push(P(ch.strokes[i][j]));
+            var l = plen(pts) + w * 3;
+            strokes.push([pts, l]);
+            tot += l;
+        }
+        for (i = 0; i < strokes.length; i++) {
+            var s0 = tc + dc * acc / tot, s1 = s0 + Math.max(dc * strokes[i][1] / tot * 0.8, comp.frameDuration * 2);
+            MV.penStroke(L, strokes[i][0], {t0: s0, t1: s1, width: w, color: col, taper: o.taper === undefined ? true : o.taper,
+                                            ease: o.ease, corner: o.corner, name: (ch["char"] || "") + " " + (i + 1)});
+            acc += strokes[i][1];
+        }
+        first = Math.min(first, tc);
+        end = Math.max(end, tc + dc);
+        if (o.drips !== false && ch.drips) for (i = 0; i < ch.drips.length; i++) {
+            var d = ch.drips[i], a0 = P([d[0], d[1]]), a1 = [a0[0], a0[1] + d[2] * k], td = tc + dc + 0.04 + 0.11 * i;
+            var dd = (o.dripDur || 0.8) * (0.6 + Math.min(1, d[2] / 40));
+            MV.penStroke(L, [a0, a1], {t0: td, t1: td + dd, width: w * 0.5, color: col, taper: 60, ease: "inout", name: "drip"});
+            end = Math.max(end, td + dd);
+        }
+    }
+    if (word.lines && o.lines) for (i = 0; i < word.lines.length; i++) {
+        var lp = [];
+        for (j = 0; j < word.lines[i].length; j++) lp.push(P(word.lines[i][j]));
+        var lt = o.lines.t + i * (o.lines.gap || 0.12);
+        MV.penStroke(L, lp, {t0: lt, t1: lt + (o.lines.dur || 0.5), width: o.lines.width || Math.max(1, w * 0.18), color: col,
+                             opacity: o.lines.opacity || 70, ease: "out", name: "hairline"});
+        end = Math.max(end, lt + (o.lines.dur || 0.5));
+    }
+    if (o.rough !== 0) MV.fx(L, "ADBE Roughen Edges", {"ADBE Roughen Edges-0002": o.rough || Math.max(0.8, w * 0.22),
+                                                        "ADBE Roughen Edges-0005": 25, "ADBE Roughen Edges-0008": 3});
+    if (first < 1e9) L.inPoint = Math.max(0, first - comp.frameDuration);
+    return {layer: L, end: end};
+};
+
+// 雨 (drawn, not painted): Fractal Noise stretched into tall streaks, moving down, tinted, on Screen. o: {speed px/s, angle
+// (lean in degrees), sw / sh (noise scale width / height), contrast, brightness, blur (directional, px), soft (gaussian),
+// color, opacity, evolve (deg/s), seed, cover (layer size / comp size), name}. Three at different sizes and speeds = depth.
+MV.RAIN = {
+    far:  {sw: 12, sh: 160, contrast: 520, brightness: -112, speed: 1300, blur: 10, soft: 0.6, opacity: 38, evolve: 260},
+    mid:  {sw: 18, sh: 280, contrast: 470, brightness: -110, speed: 2200, blur: 18, soft: 0,   opacity: 52, evolve: 220},
+    near: {sw: 36, sh: 520, contrast: 430, brightness: -124, speed: 3400, blur: 34, soft: 3,   opacity: 42, evolve: 180}
+};
+MV.rain = function (comp, o) {
+    o = o || {};
+    var pr = MV.RAIN[o.layer || "mid"] || MV.RAIN.mid, q = {}, key;
+    for (key in pr) if (pr.hasOwnProperty(key)) q[key] = pr[key];
+    for (key in o) if (o.hasOwnProperty(key) && o[key] !== undefined && o[key] !== null) q[key] = o[key];
+    var cv = q.cover || 1.5, L = MV.solid(comp, [0, 0, 0], q.name || ("rain " + (o.layer || "mid")), Math.round(comp.width * cv), Math.round(comp.height * cv));
+    var e = MV.fx(L, "ADBE Fractal Noise", {"ADBE Fractal Noise-0004": q.contrast, "ADBE Fractal Noise-0005": q.brightness,
+                                             "ADBE Fractal Noise-0006": 1, "ADBE Fractal Noise-0009": 0,
+                                             "ADBE Fractal Noise-0011": q.sw, "ADBE Fractal Noise-0012": q.sh,
+                                             "ADBE Fractal Noise-0015": q.complexity || 1});
+    MV.expr(MV.findProp(e, "ADBE Fractal Noise-0013"), "[value[0] + " + ((q.seed || 0) * 977) + ", value[1] + time * " + q.speed + "]");
+    MV.expr(MV.findProp(e, "ADBE Fractal Noise-0023"), "time * " + q.evolve + " + " + ((q.seed || 0) * 131));
+    MV.fx(L, "ADBE Tint", {"ADBE Tint-0001": [0, 0, 0, 1], "ADBE Tint-0002": (q.color || [0.88, 0.9, 0.97]).concat([1]), "ADBE Tint-0003": 100});
+    if (q.blur) MV.fx(L, "ADBE Motion Blur", {"ADBE Motion Blur-0001": q.blurDir === undefined ? 0 : q.blurDir, "ADBE Motion Blur-0002": q.blur});
+    if (q.soft) MV.blurFx(L, q.soft);
+    L.blendingMode = BlendingMode.SCREEN;
+    MV.tr(L, "rotation").setValue(q.angle === undefined ? 6 : q.angle);
+    MV.tr(L, "opacity").setValue(q.opacity);
+    return L;
+};
+
+// 電線の五線譜: wires drawn by expressions (a sag, a dip where a note lands that rings and settles, then moves left with the
+// note), and notes (lyric characters) that fall onto them and flow left like a scrolling score.
+// o: {ys: [y of each wire at the frame centre], slope, sag, x0, x1, flow (px/s), dipW (px), ring, color, width, opacity,
+//     notes: [{t, wire, x, text, amp}] (x: where it lands), drops: [{t, wire, x, amp}] (drops without a letter),
+//     font, size, fill, lift, fall, fallDur, bead, tIn, tOut, name}
+// Returns {wires: [...], notes: [...], beads: [...]}
+MV.staff = function (comp, o) {
+    o = o || {};
+    var ys = o.ys || [comp.height * 0.3, comp.height * 0.38, comp.height * 0.46, comp.height * 0.54, comp.height * 0.62];
+    var x0 = o.x0 === undefined ? -100 : o.x0, x1 = o.x1 === undefined ? comp.width + 100 : o.x1, flow = o.flow === undefined ? 150 : o.flow;
+    var notes = o.notes || [], drops = o.drops || [], out = {wires: [], notes: [], beads: []}, i, w;
+    var tIn = o.tIn === undefined ? 0 : o.tIn, tOut = o.tOut === undefined ? comp.duration : o.tOut;
+    function fn(wi) {
+        var H = [], k;
+        for (k = 0; k < notes.length; k++) if (notes[k].wire === wi) H.push([notes[k].t, notes[k].x, notes[k].amp || o.amp || 26]);
+        for (k = 0; k < drops.length; k++) if (drops[k].wire === wi) H.push([drops[k].t, drops[k].x, drops[k].amp || (o.amp || 26) * 0.6]);
+        return "function wy(x, tm) { var u = (x - " + MV.lit(x0) + ") / " + MV.lit(x1 - x0) + ", y = " + MV.lit(ys[wi]) + " + " + MV.lit(o.slope || 0) +
+               " * (x - " + MV.lit(comp.width / 2) + ") + " + MV.lit(o.sag === undefined ? 40 : o.sag) + " * 4 * u * (1 - u); var H = " + MV.lit(H) + ";" +
+               " for (var i = 0; i < H.length; i++) { var dt = tm - H[i][0]; if (dt < 0) continue; var hx = H[i][1] - " + MV.lit(flow) + " * dt," +
+               " d = (x - hx) / " + MV.lit(o.dipW || 110) + "; y += H[i][2] * Math.exp(-d * d) * (0.3 + 0.7 * Math.exp(-5 * dt) * Math.cos(17 * dt));" +
+               " y += H[i][2] * " + MV.lit(o.ring === undefined ? 0.25 : o.ring) + " * Math.exp(-2.5 * dt) * Math.sin((x - hx) / 70 - dt * 30) * 4 * u * (1 - u); }" +
+               " return y; }";
+    }
+    for (w = 0; w < ys.length; w++) {
+        var L = comp.layers.addShape();
+        L.name = (o.name || "wire") + " " + (w + 1);
+        MV.tr(L, "anchor").setValue([0, 0]);
+        MV.tr(L, "position").setValue([0, 0]);
+        var g = L.property("ADBE Root Vectors Group").addProperty("ADBE Vector Group"), v = g.property("ADBE Vectors Group");
+        var pth = v.addProperty("ADBE Vector Shape - Group").property("ADBE Vector Shape");
+        var st = v.addProperty("ADBE Vector Graphic - Stroke");
+        st.property("ADBE Vector Stroke Color").setValue(o.color || [0.86, 0.88, 0.94]);
+        st.property("ADBE Vector Stroke Width").setValue(o.width || 2.2);
+        st.property("ADBE Vector Stroke Line Cap").setValue(2);
+        MV.expr(L.property("ADBE Root Vectors Group").property(1).property("ADBE Vectors Group").property(1).property("ADBE Vector Shape"),
+                fn(w) + " var N = 110, P = []; for (var i = 0; i <= N; i++) { var x = " + MV.lit(x0) + " + " + MV.lit(x1 - x0) +
+                " * i / N; P.push([x, wy(x, time)]); } createPath(P, [], [], false);");
+        MV.tr(L, "opacity").setValue(o.opacity || 85);
+        MV.span(L, tIn, tOut);
+        out.wires.push(L);
+    }
+    var size = o.size || 56, lift = o.lift === undefined ? size * 0.62 : o.lift, fall = o.fall || 260, fd = o.fallDur || 0.22;
+    for (i = 0; i < notes.length; i++) {
+        var nt = notes[i], f = fn(nt.wire);
+        var bead = MV.shape(comp, "ellipse", [o.bead || 9, o.bead || 9], {fill: o.fill || [1, 1, 1], name: "bead"});
+        MV.expr(MV.tr(bead, "position"), f + " var t = " + MV.lit(nt.t) + ", X = " + MV.lit(nt.x) + ";" +
+                " if (time < t) { var q = (t - time) / " + MV.lit(fd) + "; [X, wy(X, t) - 5 - " + MV.lit(fall) + " * q * q]; }" +
+                " else { var x = X - " + MV.lit(flow) + " * (time - t); [x, wy(x, time) - 5]; }");
+        MV.span(bead, nt.t - fd, tOut);
+        out.beads.push(bead);
+        if (!nt.text) continue;
+        var T = MV.text(comp, nt.text, {font: o.font, size: size, fill: o.fill || [1, 1, 1], hscale: o.hscale, name: "note " + nt.text});
+        MV.expr(MV.tr(T, "position"), f + " var t = " + MV.lit(nt.t) + ", X = " + MV.lit(nt.x) + ";" +
+                " if (time < t) { var q = (t - time) / " + MV.lit(fd) + "; [X, wy(X, t) - " + MV.lit(lift) + " - " + MV.lit(fall) + " * q * q]; }" +
+                " else { var x = X - " + MV.lit(flow) + " * (time - t); [x, wy(x, time) - " + MV.lit(lift) + "]; }");
+        MV.keys(MV.tr(T, "opacity"), [[nt.t - fd, 0], [nt.t - fd * 0.4, 100]], "linear");
+        MV.span(T, nt.t - fd, tOut);
+        out.notes.push(T);
+    }
+    for (i = 0; i < drops.length; i++) {          // drops without letters: a bead that falls, lands and slides off
+        var dr = drops[i], fdr = fn(dr.wire), bd = MV.shape(comp, "ellipse", [(o.bead || 9) * 0.8, (o.bead || 9) * 0.8], {fill: o.fill || [1, 1, 1], name: "drop bead"});
+        MV.expr(MV.tr(bd, "position"), fdr + " var t = " + MV.lit(dr.t) + ", X = " + MV.lit(dr.x) + ";" +
+                " if (time < t) { var q = (t - time) / " + MV.lit(fd) + "; [X, wy(X, t) - 4 - " + MV.lit(fall) + " * q * q]; }" +
+                " else { var x = X - " + MV.lit(flow) + " * (time - t); [x, wy(x, time) - 4]; }");
+        MV.keys(MV.tr(bd, "opacity"), [[dr.t + 0.5, 100], [dr.t + 1.2, 0]], "linear");
+        MV.span(bd, dr.t - fd, Math.min(tOut, dr.t + 1.25));
+        out.beads.push(bd);
+    }
+    return out;
+};
+
+// 光が走る: a soft bright bar (a train's lit windows, headlights) sliding from `from` to `to` between t0 and t1, fading at both
+// ends. o: {size: [w, h], angle, color, peak, blur, glow (a wider, dimmer second bar), ease}
+MV.lightSweep = function (comp, t0, t1, from, to, o) {
+    o = o || {};
+    var out = [], sz = o.size || [520, 26], d = t1 - t0, list = o.glow === false ? [1] : [1, 3.2];
+    for (var i = 0; i < list.length; i++) {
+        var k = list[i], L = MV.shape(comp, "rect", [sz[0] * (i ? 1.4 : 1), sz[1] * k], {fill: o.color || [0.93, 0.95, 1], name: i ? "light glow" : "light"});
+        MV.tr(L, "rotation").setValue(o.angle || 0);
+        MV.blurFx(L, (o.blur || 14) * k);
+        L.blendingMode = BlendingMode.ADD;
+        MV.keys(MV.tr(L, "position"), [[t0, from], [t1, to]], o.ease || "linear");
+        var pk = (o.peak || 85) / (i ? 2.6 : 1);
+        MV.keys(MV.tr(L, "opacity"), [[t0, 0], [t0 + d * 0.18, pk], [t1 - d * 0.25, pk], [t1, 0]], "linear");
+        MV.span(L, t0, t1);
+        out.push(L);
+    }
+    return out;
+};
+
+// しぶき: short dashes flying out of a point (a drop hitting the canopy, the wire, a puddle). o: {n, r0, r1, width, color, dur,
+// dir (deg, 0 = up), spread (deg), squash (vertical factor), opacity}
+MV.splash = function (comp, t, pos, o) {
+    o = o || {};
+    var L = comp.layers.addShape(), n = o.n || 9, dur = o.dur || 0.38, sq = o.squash === undefined ? 1 : o.squash;
+    L.name = "splash";
+    MV.tr(L, "anchor").setValue([0, 0]);
+    MV.tr(L, "position").setValue(pos);
+    for (var i = 0; i < n; i++) {
+        var a = ((o.dir || 0) + MV.rand(-0.5, 0.5) * (o.spread === undefined ? 150 : o.spread)) * Math.PI / 180;
+        var r0 = (o.r0 || 8) * MV.rand(0.6, 1.3), r1 = (o.r1 || 80) * MV.rand(0.45, 1.1), dt = MV.rand(0, 0.04);
+        MV.penStroke(L, [[Math.sin(a) * r0, -Math.cos(a) * r0 * sq], [Math.sin(a) * r1, -Math.cos(a) * r1 * sq]],
+                     {width: (o.width || 2.6) * MV.rand(0.6, 1.2), color: o.color || [0.94, 0.95, 1], t0: t + dt, t1: t + dt + dur * 0.4,
+                      s0: t + dt + dur * 0.2, s1: t + dt + dur, name: "dash"});
+    }
+    if (o.opacity) MV.tr(L, "opacity").setValue(o.opacity);
+    MV.span(L, t, t + dur + 0.08);
+    return L;
+};
+
+// 手前の電柱: a dark, out-of-focus pole crossing the frame in front of everything. o: {x: [from, to] (or a number), w, color,
+// blur, arm (crossbar at this y, or false), ease}
+MV.pole = function (comp, t0, t1, o) {
+    o = o || {};
+    var w = o.w || 90, col = o.color || [0.035, 0.04, 0.07];
+    var L = MV.shape(comp, "rect", [w, comp.height * 1.5], {fill: col, pos: [0, comp.height / 2], name: "pole"});
+    if (o.arm !== false) {
+        var g = L.property("ADBE Root Vectors Group").addProperty("ADBE Vector Group"), v = g.property("ADBE Vectors Group");
+        var r = v.addProperty("ADBE Vector Shape - Rect");
+        r.property("ADBE Vector Rect Size").setValue([w * 6.5, w * 0.42]);
+        r.property("ADBE Vector Rect Position").setValue([w * 0.6, (o.arm || comp.height * 0.16) - comp.height / 2]);
+        v.addProperty("ADBE Vector Graphic - Fill").property("ADBE Vector Fill Color").setValue(col);
+    }
+    MV.blurFx(L, o.blur === undefined ? 10 : o.blur);
+    var xs = o.x instanceof Array ? o.x : [o.x === undefined ? comp.width * 0.3 : o.x, o.x === undefined ? comp.width * 0.3 : o.x];
+    MV.keys(MV.tr(L, "position"), [[t0, [xs[0], comp.height / 2]], [t1, [xs[1], comp.height / 2]]], o.ease || "linear");
+    MV.span(L, t0, t1);
+    return L;
+};
+
+// 伝う雫: a drop sliding along a line (down a rib, down the vinyl), speeding up, with a faint trail behind it.
+// o: {size, color, dur, trail (opacity, 0 = none)}
+MV.slideDrop = function (comp, t, from, to, o) {
+    o = o || {};
+    var s = o.size || 14, dur = o.dur || 0.9, out = [];
+    if (o.trail !== 0) {
+        var tr = comp.layers.addShape();
+        tr.name = "drop trail";
+        MV.tr(tr, "anchor").setValue([0, 0]);
+        MV.tr(tr, "position").setValue([0, 0]);
+        MV.penStroke(tr, [from, to], {width: s * 0.32, color: o.color || [0.9, 0.92, 1], opacity: o.trail || 35, t0: t, t1: t + dur,
+                                      s0: t + dur * 0.5, s1: t + dur + 0.8, ease: "in", name: "trail"});
+        MV.span(tr, t, t + dur + 0.85);
+        out.push(tr);
+    }
+    var L = MV.shape(comp, "ellipse", [s * 0.82, s], {fill: o.color || [0.9, 0.92, 1], stroke: [0.06, 0.07, 0.12], strokeWidth: 1.2, name: "sliding drop"});
+    MV.keys(MV.tr(L, "position"), [[t, from], [t + dur, to]], "in");
+    MV.keys(MV.tr(L, "opacity"), [[t, 0], [t + 0.08, 95], [t + dur, 95], [t + dur + 0.15, 0]], "linear");
+    MV.span(L, t, t + dur + 0.16);
+    out.push(L);
+    return out;
 };
