@@ -1,0 +1,22 @@
+{
+  "_about": "One song's look, measured from its key picture (the jacket). plan_check.py --look and palette_check.py read it. Values here are an example.",
+  "reference": "mv_song_key_ref.png",
+  "palette": {
+    "_how": "python3 tools/palette_check.py --derive key.png prints hue, hue_tol and sat_max",
+    "hue": 229,
+    "hue_tol": 24,
+    "sat_max": 0.5,
+    "accents": [
+      {"name": "rainbow fringe on lights after the rain", "hue": null, "sat_max": 0.6, "from": 200.0, "to": null, "max_share": 0.05}
+    ]
+  },
+  "faces_from": ["key.png", "key_16x9_textless.png", "key_eyes_crop.png"],
+  "type": {
+    "body_font": "GenEiKoburiMin6-R",
+    "latin_font": null,
+    "accent_font": "hand",
+    "max_accent_words": 7
+  },
+  "lines": {"color": "#e8ebf5", "width": 2},
+  "rain": "ae"
+}

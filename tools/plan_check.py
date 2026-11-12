@@ -1,7 +1,7 @@
 """Check a shot list (build_shots.jsx job or its params) against the cut-rhythm and framing targets from the
 learning notes, before anything is built.
 
-usage: python3 plan_check.py <job.json> [timing.json] [--md out.md]
+usage: python3 plan_check.py <job.json> [timing.json] [--look look.json] [--md out.md]
 
 What it counts
 - switches: a new shot, a background change inside a shot (bgs), a flash, a black frame (start and end).
@@ -13,7 +13,17 @@ What it counts
 - where switches land: on a beat, on a half beat, or on the start of a sung word (any of these is fine; none is "off").
 - how many shots show a face: shots carry view: "face" | "eyes" | "bust" | "profile" (a face) or "hand" | "feet" |
   "back" | "item" | "scene" | "sky" | "type" | "motion" ... (no face). Faces should be half or fewer.
+- with --look (the song's look.json; tools/look_example.json shows the fields):
+  - every face shot draws its face from a picture listed in look.faces_from (the jacket and the pictures made from
+    it). The v4 review found a different person in every face cut; this makes that impossible to plan by accident.
+  - every shot longer than one beat lists two or more things that move inside the picture (shot.motion), besides
+    the camera. The v4 review: "a fast slideshow of stills".
+  - lyrics drawn in the accent typeface (text.accent: true, or text.font = look.type.accent_font) stay within
+    look.type.max_accent_words for the song; this counts the ones in this job.
+  - a shot marked peak: true has the biggest lyric of the job, at least 1.3x the next biggest elsewhere (the v4 review:
+    the peak word was small and hidden, and three cuts had the same layout).
 """
+import os
 import json, sys, statistics
 
 FACE = {"face", "eyes", "bust", "profile", "smile", "closeup"}
@@ -34,8 +44,10 @@ def kind_of(label):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     md_out = sys.argv[sys.argv.index("--md") + 1] if "--md" in sys.argv else None
-    if md_out in args:
-        args.remove(md_out)
+    look_p = sys.argv[sys.argv.index("--look") + 1] if "--look" in sys.argv else None
+    for a in (md_out, look_p):
+        if a in args:
+            args.remove(a)
     job = json.load(open(args[0], encoding="utf-8-sig"))
     P = job.get("params", job)
     tm = json.load(open(args[1], encoding="utf-8-sig")) if len(args) > 1 else None
@@ -129,11 +141,72 @@ def main():
     if missing:
         lines.append("view が書かれていないショット %d（顔の割合に入れていない）" % missing)
 
+    if look_p:
+        look = json.load(open(look_p, encoding="utf-8-sig"))
+        lines += look_checks(look, shots, beat, out)
+
     text = "\n".join(lines) + "\n"
     if md_out:
         open(md_out, "w", encoding="utf-8").write(text)
     print(text)
     print(json.dumps(out, ensure_ascii=False))
+
+
+def pictures(s):
+    """Every picture file a shot draws from."""
+    out = []
+    for b in [s.get("bg")] + list(s.get("bgs") or []):
+        if b and b.get("img"):
+            out.append(b["img"])
+        if b and (b.get("inside") or {}).get("img"):
+            out.append(b["inside"]["img"])
+    if s.get("cut"):
+        out.append(s["cut"])
+    if (s.get("char") or {}).get("img"):
+        out.append(s["char"]["img"])
+    return [os.path.basename(str(x).replace("\\", "/")) for x in out]
+
+
+def look_checks(look, shots, beat, out):
+    L = []
+    faces_from = {os.path.basename(str(x).replace("\\", "/")) for x in look.get("faces_from", [])}
+    if faces_from:
+        stray, nface = [], sum(1 for s in shots if s.get("view") in FACE)
+        for i, s in enumerate(shots):
+            if s.get("view") in FACE and not any(p in faces_from for p in pictures(s)):
+                stray.append("%d（%.2f秒、%s）" % (i, s["t0"], "、".join(pictures(s)) or "絵なし"))
+        L += ["", "## 顔の出どころ", "",
+              "顔のカットはジャケ写とそこから作った絵（look.faces_from、%d枚）だけから。" % len(faces_from),
+              ("決まりの外の顔 %d/%d: " % (len(stray), nface) + " ".join(stray)) if stray else
+              ("顔のカット %d、すべて決まりの中。" % nface if nface else "view が顔のショットはない（view を書いていなければ数えられない）。")]
+        out["face_stray"] = len(stray)
+    one = beat or 0.5
+    lack = []
+    for i, s in enumerate(shots):
+        if s["t1"] - s["t0"] > one * 1.05 and len(set(s.get("motion") or [])) < 2:
+            lack.append("%d（%.2f秒、%.1f拍、%s）" % (i, s["t0"], (s["t1"] - s["t0"]) / one, "・".join(s.get("motion") or []) or "なし"))
+    L += ["", "## 絵の中の動き（計画）", "",
+          "1拍より長いショットは、カメラ以外に動くものを2つ以上（shot.motion）。",
+          ("足りないショット %d: " % len(lack) + " ".join(lack)) if lack else "すべて2つ以上。"]
+    out["motion_lack"] = len(lack)
+    ty = look.get("type", {})
+    af, cap = ty.get("accent_font"), ty.get("max_accent_words")
+    acc = [t.get("text", "") for s in shots for t in (s.get("texts") or []) if t.get("accent") or (af and t.get("font") == af)]
+    if cap is not None:
+        L += ["", "## 手書き文字（差し色の言葉）", "",
+              "この範囲で %d語（曲全体で %d語まで）: %s" % (len(acc), cap, "、".join(acc) or "なし")
+              + ("　多すぎる" if len(acc) > cap else "")]
+        out["accent_words"] = len(acc)
+    peaks = [i for i, s in enumerate(shots) if s.get("peak")]
+    if peaks:
+        size = lambda s: max([t.get("size", 0) for t in (s.get("texts") or [])] or [0])
+        for i in peaks:
+            others = max([size(s) for j, s in enumerate(shots) if j not in peaks] or [0])
+            ok = size(shots[i]) >= 1.3 * others
+            L += ["", "## 山", "", "山のショット %d（%.2f秒）: 文字 %d、ほかの最大 %d。%s" % (
+                i, shots[i]["t0"], size(shots[i]), others, "OK" if ok else "山の文字がほかと変わらない（1.3倍以上に）")]
+        out["peak_ok"] = all(size(shots[i]) >= 1.3 * max([size(s) for j, s in enumerate(shots) if j not in peaks] or [0]) for i in peaks)
+    return L
 
 
 if __name__ == "__main__":
