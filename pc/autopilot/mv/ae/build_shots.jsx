@@ -60,9 +60,9 @@
 //        {light: [t0, t1], from: [x, y], to: [x, y], size: [w, h], angle, color, peak, blur, glow} (a light sliding past) |
 //        {splash: t | [t...], pos: [x, y] | [[x, y]...], n, r0, r1, width, color, dur, dir, spread, squash} (drops bursting) |
 //        {slide: t, from, to, size, color, dur, trail} (a drop running down) | {pole: [t0, t1], x: [from, to], w, color, blur, arm}
-//        (a dark pole crossing in front of everything)
-//        (bars, frames, drops, boxes, far/mid rain, lights, splashes, slides and any fx with under: true are placed below the
-//        lyrics; the rest above)
+//        (a dark pole crossing in front of the picture)
+//        (bars, frames, drops, boxes, rain, lights, splashes, slides, poles and any fx with under: true are placed below the
+//        lyrics, with the bars over the rest of them; the others go above)
 // top:   [fx...] built after every shot, over the whole piece (a rain layer that runs through every cut)
 // hand:  {key: word} the handwritten words texts in mode "write" refer to (kept out of this public file)
 // finish: {tone: {hi, mid, lo, mix}, unify: {keep, amount, tol, soft, hue, sat}, wash: {color, amount}, vignette, feather, grade: {...}}
@@ -345,10 +345,12 @@
         if (f.bars !== undefined) {
             var bs;
             if (f.still) {                          // already in place (the letterbox carried on from the shot before)
+                // tall enough to still reach the frame edge when the band later narrows (to)
                 var bh = (H - (f.band || 420)) / 2, bc = col(f.color || "#000000");
-                bs = [MV.shape(comp, "rect", [W * 1.2, bh + 4], {fill: bc, pos: [W / 2, bh / 2 - 2], name: "bar top"}),
-                      MV.shape(comp, "rect", [W * 1.2, bh + 4], {fill: bc, pos: [W / 2, H - bh / 2 + 2], name: "bar bottom"})];
-            } else bs = MV.bars(comp, T(f.bars), f.band || 420, {dur: f.dur});
+                var bt = (H - Math.min(f.band || 420, f.to === undefined ? 1e9 : f.to)) / 2 + 4;
+                bs = [MV.shape(comp, "rect", [W * 1.2, bt], {fill: bc, pos: [W / 2, bh - bt / 2], name: "bar top"}),
+                      MV.shape(comp, "rect", [W * 1.2, bt], {fill: bc, pos: [W / 2, H - bh + bt / 2], name: "bar bottom"})];
+            } else bs = MV.bars(comp, T(f.bars), f.band || 420, {dur: f.dur, minBand: f.to});
             if (f.to !== undefined) {                 // the band narrows (or opens) between at[0] and at[1]
                 var at = f.at || [f.bars + 0.4, f.bars + 1.6], dd = ((f.band || 420) - f.to) / 2;
                 for (var bk2 = 0; bk2 < 2; bk2++) {
@@ -416,9 +418,11 @@
         var under = function (f) {
             if (f.over) return false;
             return f.bars !== undefined || f.frame !== undefined || f.drops !== undefined || f.box !== undefined || f.light !== undefined ||
-                   f.splash !== undefined || f.slide !== undefined || (f.rain !== undefined && f.layer !== "near") || f.under;
+                   f.splash !== undefined || f.slide !== undefined || f.rain !== undefined || f.pole !== undefined || f.under;
         };
-        for (var u = 0; S.fx && u < S.fx.length; u++) if (under(S.fx[u])) buildFx(S.fx[u], a, z);
+        // bars last of these, so rain, light and the pole stay inside the picture and the letterbox stays clean for the lyrics
+        for (var u = 0; S.fx && u < S.fx.length; u++) if (under(S.fx[u]) && S.fx[u].bars === undefined) buildFx(S.fx[u], a, z);
+        for (u = 0; S.fx && u < S.fx.length; u++) if (under(S.fx[u]) && S.fx[u].bars !== undefined) buildFx(S.fx[u], a, z);
         for (var i = 0; S.texts && P.pass !== "plate" && i < S.texts.length; i++) {
             var x = S.texts[i], xa = x.tIn !== undefined ? T(x.tIn) : a, xz = x.tOut !== undefined ? T(x.tOut) : z;
             var before = comp.numLayers, groups, imageText = false, ts = settle(x, xa, xz), qaOnly = null;

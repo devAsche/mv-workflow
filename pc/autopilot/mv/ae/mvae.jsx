@@ -829,11 +829,12 @@ MV.echo = function (L, color, offset) {
 };
 
 // black bars that slam in from top and bottom, leaving a band of height bandH (目元だけ見せる帯)
+// o.minBand: the narrowest band the bars will later close to (they are made tall enough to still reach the frame edge)
 MV.bars = function (comp, t, bandH, o) {
     o = o || {};
-    var h = (comp.height - bandH) / 2 + 20, out = [];
-    var top = MV.shape(comp, "rect", [comp.width * 1.2, h], {fill: o.color || [0, 0, 0], pos: [comp.width / 2, h / 2 - 20], name: "bar top"});
-    var bot = MV.shape(comp, "rect", [comp.width * 1.2, h], {fill: o.color || [0, 0, 0], pos: [comp.width / 2, comp.height - h / 2 + 20], name: "bar bottom"});
+    var edge = (comp.height - bandH) / 2, h = (comp.height - Math.min(bandH, o.minBand === undefined ? bandH : o.minBand)) / 2 + 20, out = [];
+    var top = MV.shape(comp, "rect", [comp.width * 1.2, h], {fill: o.color || [0, 0, 0], pos: [comp.width / 2, edge - h / 2], name: "bar top"});
+    var bot = MV.shape(comp, "rect", [comp.width * 1.2, h], {fill: o.color || [0, 0, 0], pos: [comp.width / 2, comp.height - edge + h / 2], name: "bar bottom"});
     MV.slam(top, t, "top", o.dur || 0.3, {dist: h});
     MV.slam(bot, t, "bottom", o.dur || 0.3, {dist: h});
     out.push(top, bot);
@@ -1292,10 +1293,13 @@ MV.write = function (comp, word, o) {
 // 雨 (drawn, not painted): Fractal Noise stretched into tall streaks, moving down, tinted, on Screen. o: {speed px/s, angle
 // (lean in degrees), sw / sh (noise scale width / height), contrast, brightness, blur (directional, px), soft (gaussian),
 // color, opacity, evolve (deg/s), seed, cover (layer size / comp size), name}. Three at different sizes and speeds = depth.
+// Presets measured 2026-11-12 (fx_test.jsx, four sets on one picture): the first set (sw 12-36, brightness -110) drew
+// streaks 10-15 px wide over a third of the frame; these draw 2-5 px streaks over a few percent. Checked between two
+// frames: the streaks move down (about speed / fps px per frame) and lean with the angle.
 MV.RAIN = {
-    far:  {sw: 12, sh: 160, contrast: 520, brightness: -112, speed: 1300, blur: 10, soft: 0.6, opacity: 38, evolve: 260},
-    mid:  {sw: 18, sh: 280, contrast: 470, brightness: -110, speed: 2200, blur: 18, soft: 0,   opacity: 52, evolve: 220},
-    near: {sw: 36, sh: 520, contrast: 430, brightness: -124, speed: 3400, blur: 34, soft: 3,   opacity: 42, evolve: 180}
+    far:  {sw: 3,   sh: 90,  contrast: 600, brightness: -175, speed: 1300, blur: 10, soft: 0.6, opacity: 35, evolve: 260},
+    mid:  {sw: 4.5, sh: 160, contrast: 600, brightness: -170, speed: 2200, blur: 18, soft: 0,   opacity: 45, evolve: 220},
+    near: {sw: 8,   sh: 300, contrast: 560, brightness: -185, speed: 3400, blur: 34, soft: 1.5, opacity: 35, evolve: 180}
 };
 MV.rain = function (comp, o) {
     o = o || {};
@@ -1408,7 +1412,8 @@ MV.lightSweep = function (comp, t0, t1, from, to, o) {
     return out;
 };
 
-// しぶき: short dashes flying out of a point (a drop hitting the canopy, the wire, a puddle). o: {n, r0, r1, width, color, dur,
+// しぶき: short dashes flying out of a point (a drop hitting the canopy, the wire, a puddle). Each dash starts at r0 (default
+// 35-60% of its r1, so the centre stays open). o: {n, r0, r1, width, color, dur,
 // dir (deg, 0 = up), spread (deg), squash (vertical factor), opacity}
 MV.splash = function (comp, t, pos, o) {
     o = o || {};
@@ -1418,7 +1423,7 @@ MV.splash = function (comp, t, pos, o) {
     MV.tr(L, "position").setValue(pos);
     for (var i = 0; i < n; i++) {
         var a = ((o.dir || 0) + MV.rand(-0.5, 0.5) * (o.spread === undefined ? 150 : o.spread)) * Math.PI / 180;
-        var r0 = (o.r0 || 8) * MV.rand(0.6, 1.3), r1 = (o.r1 || 80) * MV.rand(0.45, 1.1), dt = MV.rand(0, 0.04);
+        var r1 = (o.r1 || 80) * MV.rand(0.55, 1.1), r0 = o.r0 !== undefined ? o.r0 * MV.rand(0.6, 1.3) : r1 * MV.rand(0.35, 0.6), dt = MV.rand(0, 0.04);
         MV.penStroke(L, [[Math.sin(a) * r0, -Math.cos(a) * r0 * sq], [Math.sin(a) * r1, -Math.cos(a) * r1 * sq]],
                      {width: (o.width || 2.6) * MV.rand(0.6, 1.2), color: o.color || [0.94, 0.95, 1], t0: t + dt, t1: t + dt + dur * 0.4,
                       s0: t + dt + dur * 0.2, s1: t + dt + dur, name: "dash"});
