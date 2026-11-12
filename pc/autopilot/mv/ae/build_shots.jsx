@@ -24,7 +24,9 @@
 // bgs:   [bg, ...] with tIn/tOut each, when one shot changes its background
 // shot:  also cut: cut-out PNG the same pixel size as bg.img (built with the bg's own framing, moves and effects except blur,
 //        so it sits exactly on the figure; lyrics with behind: true go between), cutDim: its dim (default the bg's), view: "face" | "eyes" | "hand" | "back" | "feet" | "item" |
-//        "scene" | "type" ... (not drawn; tools/plan_check.py counts how many cuts show a face)
+//        "scene" | "type" ... (not drawn; tools/plan_check.py counts how many cuts show a face),
+//        motion: ["rain", "drops", "hair", "parallax", ...] (not drawn: what moves inside the picture, besides the camera;
+//        plan_check wants two or more per shot longer than a beat)
 // char:  {img, h, pos, tIn, slam: {t, from, dur}, move: [[t, scale%]...], hops: [t...], hop: px, echo: {color, offset}, jolt: [t0, t1, amp]}
 // texts: {text, font, size, pos, fill, stroke, strokeWidth, tIn, tOut,
 //         mode: "line" | "chars" | "vchars",
@@ -42,6 +44,8 @@
 //        {box: t, pos, size: [w, h], color, opacity, dur, out, vertical, wipe} (a dark box under lyrics)
 //        (bars, frames, drops, boxes and any fx with under: true are placed below the lyrics; the rest above)
 // finish: {tone: {hi, mid, lo, mix}, unify: {keep, amount, tol, soft, hue, sat}, wash: {color, amount}, vignette, feather, grade: {...}}
+// pass:  "plate" builds everything but the lyrics, for tools/motion_check.py to judge the pictures alone
+// result.upscale lists picture layers scaled past 105% of their own pixels at any key (they look soft; v4 review)
 // qa:    {contrast: true}: for every lyric at its settled time, a still with it, one without it and one of it alone on magenta
 //        (qa_NNN_on/off/solo.png, qa.json); tools/qa_contrast.py measures how well each lyric stands out from what is around it
 
@@ -309,7 +313,7 @@
         // bars, frames, drops and boxes sit under the lyrics; flashes, bursts, rings and black frames go on top of everything
         var under = function (f) { return f.bars !== undefined || f.frame !== undefined || f.drops !== undefined || f.box !== undefined || f.under; };
         for (var u = 0; S.fx && u < S.fx.length; u++) if (under(S.fx[u])) buildFx(S.fx[u], a, z);
-        for (var i = 0; S.texts && i < S.texts.length; i++) {
+        for (var i = 0; S.texts && P.pass !== "plate" && i < S.texts.length; i++) {
             var x = S.texts[i], xa = x.tIn !== undefined ? T(x.tIn) : a, xz = x.tOut !== undefined ? T(x.tOut) : z;
             var before = comp.numLayers, groups, imageText = false, ts = settle(x, xa, xz);
             if (x.mode === "chars" || x.mode === "vchars") {
@@ -340,6 +344,19 @@
         mvlog("shot " + (s + 1) + " " + S.t0 + "-" + S.t1 + " done, layers " + comp.numLayers);
     }
 
+    // pictures blown up past their own pixels look soft (v4 review: 225-300% on a 2016 px picture)
+    var UP = [];
+    for (var ui = 1; ui <= comp.numLayers; ui++) {
+        var UL = comp.layer(ui), src = null;
+        try { src = UL.source; if (!(src instanceof FootageItem) || !(src.mainSource instanceof FileSource) || !src.mainSource.isStill) continue; }
+        catch (er) { continue; }
+        var sp = UL.transform.scale, mx = Math.abs(sp.value[0]), mt = null;
+        for (var k = 1; k <= sp.numKeys; k++) { var kv = Math.abs(sp.keyValue(k)[0]); if (kv > mx) { mx = kv; mt = sp.keyTime(k); } }
+        if (mx > 105) UP.push({layer: UL.name, scale: Math.round(mx), at: mt === null ? null : Math.round((mt + OFF) * 100) / 100,
+                               px: src.width + "x" + src.height});
+    }
+    if (UP.length) mvlog("pictures scaled past their pixels: " + UP.length);
+
     if (P.finish) {
         var F = P.finish;
         if (F.tone) MV.tone(comp, {hi: col(F.tone.hi), mid: col(F.tone.mid), lo: col(F.tone.lo), mix: F.tone.mix});
@@ -350,7 +367,7 @@
         if (F.grade) MV.grade(comp, F.grade);
     }
 
-    var res = {fonts: fontLog, layers: comp.numLayers, stills: []};
+    var res = {fonts: fontLog, layers: comp.numLayers, stills: [], upscale: UP};
     if (P.save) res.project = MV.save(out(P.save));
     for (i = 0; P.stills && i < P.stills.length; i++) {
         var st = P.stills[i], nm = "still_" + (i < 9 ? "0" : "") + (i + 1) + "_" + String(st).replace(".", "s") + ".png";
