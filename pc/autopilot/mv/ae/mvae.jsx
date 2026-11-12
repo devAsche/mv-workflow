@@ -268,9 +268,27 @@ MV.stillRQ = function (comp, t, path) {
     return o.fsName;
 };
 
-MV.STILL_MODE = "png";           // "rq": every still through the render queue (TIFF)
+// "queue": only add the render-queue item (one frame, TIFF) and return the file it will write; nothing renders here.
+// The saved project is rendered afterwards by aerender (the runner's ae_render job). For when rendering from a script
+// inside the open AE does nothing (2026-11-12: renderQueue.render() returned at once, items stayed queued).
+MV.stillQueue = function (comp, t, path) {
+    var fd = comp.frameDuration, fr = Math.round(t / fd);
+    var it = app.project.renderQueue.items.add(comp);
+    it.timeSpanStart = fr * fd;
+    it.timeSpanDuration = fd;
+    var om = it.outputModule(1), tpl = MV.findTemplate(om.templates, ["TIFF"]);
+    if (!tpl) throw new Error("no TIFF output template in: " + om.templates.join(" | "));
+    om.applyTemplate(tpl);
+    var base = path.replace(/\.(png|tif)$/i, ""), dir = new File(base).parent;
+    if (!dir.exists) dir.create();
+    om.file = new File(base + "_[#####].tif");
+    return base + "_" + ("0000" + fr).slice(-5) + ".tif";
+};
+
+MV.STILL_MODE = "png";           // "rq": every still through the render queue (TIFF); "queue": queued for aerender
 MV.still = function (comp, t, path) {   // one frame to PNG (for quick checks, no render queue)
     if (MV.STILL_MODE === "rq") return MV.stillRQ(comp, t, path);
+    if (MV.STILL_MODE === "queue") return MV.stillQueue(comp, t, path);
     var f = new File(path);
     if (!f.parent.exists) f.parent.create();
     comp.saveFrameToPng(t, f);

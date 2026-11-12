@@ -115,6 +115,7 @@ class Layer {
     if (kind === 'text') { const tp = this.root.property('ADBE Text Properties'); tp.property('ADBE Text Document').setValue(new TextDoc(src)); tp.property('ADBE Text Animators'); this.source = null; this._text = src; }
     if (kind === 'av' && src) this.root.property('ADBE Transform Group').property('ADBE Anchor Point').setValue([src.width / 2, src.height / 2]);
   }
+  copyToComp(c) { const L = new Layer(c, this.kind, this.source); L.name = this.name; c._add(L); return L; }
   get transform() { const tg = this.root.property('ADBE Transform Group'); return {scale: tg.property('ADBE Scale')}; }
   property(k) { return this.root.property(k); }
   get index() { return this.containingComp._layers.indexOf(this) + 1; }
@@ -167,7 +168,7 @@ global.app = {
   version: 'mock', project: null,
   newProject() { this.project = {dirty: false, numItems: 0, file: null, items: {addComp: (n, w, h, pa, d, f) => new Comp(n, w, h, pa, d, f)},
     importFile: (io) => { const p = io.file.fsName; const s = IMG[p] || (/\.wav$/i.test(p) ? null : [3072, 1728]); const it = Object.create(FootageItem.prototype); it.width = s ? s[0] : 0; it.height = s ? s[1] : 0; it.mainSource = Object.create(FileSource.prototype); it.mainSource.isStill = !!s; return it; },
-    save() {}, renderQueue: RQ}; },
+    save() {}, close() { app._closed = true; }, renderQueue: RQ}; },
   fonts: {getFontsByPostScriptName: (n) => [{postScriptName: n}], getFontsByFamilyNameAndStyleName: () => []},
   beginSuppressDialogs() {}, endSuppressDialogs() {},
 };
@@ -193,6 +194,8 @@ if (require.main === module) {
   try { r = run(job, sizes); } catch (e) { console.log('FAIL', e.stack.split('\n').slice(0, 6).join('\n')); process.exit(1); }
   console.log('OK: layers', r.result.layers, 'stills', r.stills.length, 'expressions', r.stats.exprs.length, 'keys', r.stats.keys);
   console.log('effects', JSON.stringify(r.stats.effects));
+  if (r.result.queued !== undefined) console.log('queued for aerender', r.result.queued, 'items:', RQ._items.map(it => it._om.file ? it._om.file.fsName.split(/[\\\/]/).pop() + '@' + it.timeSpanStart.toFixed(3) : '?').join(' '));
+  if (r.result.qa !== undefined) console.log('qa items', r.result.qa);
   if (r.result.upscale.length) console.log('pictures past their pixels', JSON.stringify(r.result.upscale));
   if (process.argv.indexOf('--expr') > 0) {
     const thisComp = {width: J.params.w, height: J.params.h}, OFF = J.params.offset || 0;

@@ -117,12 +117,13 @@ def main():
     rows = []
     for it in meta["items"]:
         a, b = (os.path.join(src, "qa_%s_%s.png" % (it["id"], k)) for k in ("on", "off"))
-        if not (os.path.exists(a) and os.path.exists(b)):
+        sp = os.path.join(src, "qa_%s_solo.png" % it["id"])
+        # aerender builds (stillMode "queue") have no off still: the solo still alone says where the letters are
+        if not (os.path.exists(a) and (os.path.exists(b) or os.path.exists(sp))):
             rows.append(dict(it, verdict="missing", note="静止画がない"))
             continue
         on = np.asarray(Image.open(a).convert("RGB"), float)
-        off = np.asarray(Image.open(b).convert("RGB"), float)
-        sp = os.path.join(src, "qa_%s_solo.png" % it["id"])
+        off = np.asarray(Image.open(b).convert("RGB"), float) if os.path.exists(b) else None
         solo = np.asarray(Image.open(sp).convert("RGB"), float) if os.path.exists(sp) else None
         rows.append(dict(it, **measure(on, off, it, H, solo)))
     order = {"ng": 0, "missing": 1, "warn": 2, "ok": 3}

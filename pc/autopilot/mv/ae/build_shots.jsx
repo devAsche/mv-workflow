@@ -11,6 +11,8 @@
 //   finish: {grade: {...}, vignette: 45},
 //   stills: [song times], save: "name.aep", render: "h264" | "tiff" | null,
 //   stillMode: "rq" (stills and qa frames through the render queue as TIFF, when saveFrameToPng does not write)
+//              "queue" (stills, qa frames and the render are only queued, the project is saved and closed, and the runner's
+//              ae_render job renders the whole queue with aerender; stills come out as name_NNNNN.tif, NNNNN = frame)
 // }
 // bg:    {img | solid, extra, move: [[t, scale%, [x, y]]...], ease, punch: {t, big, dur}, mono: {tint, amount}, keep, keepTol,
 //         blur, dim, blinds: {t, dur, angle, width}, mosaic: {t, dur, from}, jolt: [t0, t1, amp], kira: t,
@@ -77,7 +79,8 @@
     function out(name) { return MVJOB.outdir + "\\" + name; }
 
     MV.newProject();
-    if (P.stillMode) MV.STILL_MODE = P.stillMode;          // "rq": stills through the render queue (TIFF)
+    if (P.stillMode) MV.STILL_MODE = P.stillMode;          // "rq": stills through the render queue (TIFF); "queue": for aerender
+    var QUEUE = MV.STILL_MODE === "queue";
     var comp = MV.comp(P.name || "MV_build", P.w, P.h, P.dur, P.fps, [0, 0, 0]);
     var W = comp.width, H = comp.height;
 
@@ -493,6 +496,18 @@
         for (i = 0; i < QA.length; i++) {
             var e = QA[i], id = ("00" + (i + 1)).slice(-3);
             MV.still(comp, e.t, out("qa_" + id + "_on.png"));
+            if (QUEUE) {
+                // switching layers off does not reach a render that runs later, so the solo still gets its own comp:
+                // copies of this lyric's layers (bottom first, so the stacking stays) over a magenta key. No off still;
+                // qa_contrast.py works from on + solo.
+                var qc = MV.comp("MV_qa_" + id, W, H, comp.duration, 1 / comp.frameDuration, [0, 0, 0]);
+                for (q = e.layers.length - 1; q >= 0; q--) e.layers[q].copyToComp(qc);
+                MV.solid(qc, [1, 0, 1], "qa key").moveToEnd();
+                MV.still(qc, e.t, out("qa_" + id + "_solo.png"));
+                qj.push({id: id, shot: e.shot, text: e.text, label: e.label, t: Math.round((e.t + OFF) * 100) / 100, plate: e.plate,
+                         size: e.size, mode: e.mode, fill: e.fill, stroke: e.stroke});
+                continue;
+            }
             for (q = 0; q < e.layers.length; q++) e.layers[q].enabled = false;
             MV.still(comp, e.t, out("qa_" + id + "_off.png"));
             // solo: only this lyric over a magenta key, so the check knows every letter, including ones a picture hides
@@ -516,6 +531,13 @@
         var r = MV.addRender(comp, out(comp.name + (P.render === "h264" ? ".mp4" : "")), P.render);
         res.render = {template: r.template, file: r.file};
         if (P.save) MV.save(out(P.save));
+    }
+    if (QUEUE) {                  // everything is queued: save, close (frees AE's memory before aerender opens the file)
+        if (!P.save) throw new Error("stillMode queue needs params.save (aerender renders the saved project)");
+        res.project = MV.save(out(P.save));
+        res.queued = app.project.renderQueue.numItems;
+        app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+    } else if (P.render) {
         var tr0 = new Date().getTime();
         app.project.renderQueue.render();
         res.render.secs = Math.round((new Date().getTime() - tr0) / 1000);
