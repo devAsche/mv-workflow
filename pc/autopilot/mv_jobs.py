@@ -9,6 +9,10 @@
 #               package list below. The runner's own venv is never touched.
 #   mv_analyze  runs mv\analyze.py inside venv-mv: vocal separation (Demucs), beat and
 #               downbeat tracking (Beat This!), lyric alignment (stable-ts), sections, energy.
+#   mv_align    runs mv\ctc_emissions.py inside venv-mv: a Japanese CTC speech model listens to
+#               a separated vocal and writes per-frame character probabilities (emissions.npz),
+#               from which tools/align_lyrics.py times every lyric character. Only the models in
+#               ALIGN_MODELS can be used; they are downloaded once into work\mv\models\hf.
 #   ae_script, ae_render        After Effects jobs, in mv_ae.py (v1.5)
 #   web_download, font_install  fonts and free assets, in mv_assets.py (v1.5)
 #   mv_cutout, ps_script        character cut-outs and Photoshop scripts, in mv_cutout.py (v1.6)
@@ -25,14 +29,20 @@ TORCH_INDEX = "https://download.pytorch.org/whl/cu130"
 MV_PACKAGES = [
     ["torch", "torchaudio"],                       # installed from TORCH_INDEX (CUDA build)
     ["demucs==4.1.0", "stable-ts==2.19.1", "beat-this==1.1.0", "rotary-embedding-torch",
-     "librosa", "soundfile", "soxr"],
+     "librosa", "soundfile", "soxr", "transformers>=4.40"],
 ]
+
+# CTC models mv_align may download and run (Hugging Face repo ids).
+ALIGN_MODELS = {
+    "reazon-research/japanese-wav2vec2-large-rs35kh",   # Apache-2.0, ReazonSpeech v2.0, kanji + kana output
+}
 
 
 def register(runner):
     global R
     R = runner
-    handlers = {"mv_setup": h_mv_setup, "mv_analyze": h_mv_analyze, "model_download": h_model_download}
+    handlers = {"mv_setup": h_mv_setup, "mv_analyze": h_mv_analyze, "mv_align": h_mv_align,
+                "model_download": h_model_download}
     # v1.5: After Effects (mv_ae.py) and asset/font jobs (mv_assets.py); v1.6: cut-outs and Photoshop
     # (mv_cutout.py). A broken or missing file only
     # disables its own jobs.
@@ -69,11 +79,18 @@ def h_mv_setup(ctx, j):
     check = ("import json, torch, torchaudio, demucs, stable_whisper, beat_this, librosa;"
              "print(json.dumps({'torch': torch.__version__, 'cuda': torch.cuda.is_available(),"
              "'gpu': torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,"
-             "'demucs': demucs.__version__, 'stable_ts': stable_whisper.__version__, 'librosa': librosa.__version__}))")
+             "'demucs': demucs.__version__, 'stable_ts': stable_whisper.__version__, 'librosa': librosa.__version__}));"
+             "import transformers; print(json.dumps({'transformers': transformers.__version__}))")
     out = subprocess.run([py, "-c", check], capture_output=True, timeout=300)
     txt = out.stdout.decode("utf-8", "replace").strip().splitlines()
     ctx.log(out.stderr.decode("utf-8", "replace")[-2000:])
-    info = json.loads(txt[-1]) if txt else {"error": "check failed"}
+    info = {}
+    for line in txt[-2:]:
+        try:
+            info.update(json.loads(line))
+        except ValueError:
+            pass
+    info = info or {"error": "check failed"}
     info["venv"] = vd
     json.dump(info, open(ctx.out("mv_setup.json"), "w"), indent=1); ctx.add(ctx.out("mv_setup.json"))
     return info
@@ -113,6 +130,34 @@ def h_mv_analyze(ctx, j):
     return {"duration": t.get("duration"), "bpm": t.get("bpm"), "beats": len(t.get("beats", [])),
             "lines": len(t.get("lines", [])), "sections": [s["label"] for s in t.get("sections", [])],
             "devices": t.get("devices")}
+
+
+def h_mv_align(ctx, j):
+    """{"audio": separated vocal (e.g. a vocals.wav from mv_analyze), "model": optional (ALIGN_MODELS),
+        "keep_chars": optional string of characters to keep} -> emissions.npz, emissions_info.json"""
+    py = _venv_python()
+    if not os.path.exists(py):
+        raise RuntimeError("venv-mv is missing: run an mv_setup job first")
+    model = j.get("model", "reazon-research/japanese-wav2vec2-large-rs35kh")
+    if model not in ALIGN_MODELS:
+        raise ValueError(f"model not allowed: {model} (allowed: {sorted(ALIGN_MODELS)})")
+    script = os.path.join(R.ROOT, "mv", "ctc_emissions.py")
+    audio = R.safe_path(j["audio"], must_exist=True)
+    cache = os.path.join(R.ROOT, "work", "mv", "models", "hf")
+    os.makedirs(cache, exist_ok=True)
+    cmd = [py, script, "--audio", audio, "--outdir", ctx.dir, "--model", model, "--cache", cache,
+           "--device", j.get("device", "auto")]
+    if j.get("keep_chars"):
+        kp = ctx.out("keep_chars.txt")
+        open(kp, "w", encoding="utf-8").write(j["keep_chars"])
+        cmd += ["--keep-chars", kp]
+    _free_comfy_vram(ctx)
+    ctx.run(cmd, cwd=os.path.dirname(script), timeout=j.get("timeout", 3600))
+    for name in ("emissions.npz", "emissions_info.json"):
+        if os.path.exists(ctx.out(name)):
+            ctx.add(ctx.out(name))
+    info = json.load(open(ctx.out("emissions_info.json"), encoding="utf-8"))
+    return {k: info[k] for k in ("model", "device", "frames", "kept_tokens", "seconds")}
 
 
 # ---------------------------------------------------------------- model_download
