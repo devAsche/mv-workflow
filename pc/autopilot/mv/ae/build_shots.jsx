@@ -48,7 +48,8 @@
 //                 wires: [wire index per character], xs: [landing x per character], ys: [y per wire], slope, sag, flow (px/s), amp,
 //                 dipW, ring, drops: [{t, wire, x, amp}] (drops without letters), wireColor, wireWidth, wireOpacity, lift, fall, bead
 //         both:   hscale, vscale, kana, skew (shape of the type), slice: [{t, shift, frac, dur}], stretchAt: [t, k], behind: true
-//                 (placed under the character cut-out), plate: "strip" | "box" | "scrim" | "halo" or {kind, color, opacity, pad, dur}
+//                 (placed under the character cut-out), plate: "strip" | "box" | "scrim" | "halo" or {kind, color, opacity, pad, dur},
+//                 or a list of them (a scrim under the line and a halo on the letters); plates dim with the line's fade
 //                 (something under the letters so they read on any picture; type.plate sets it for every lyric), qa: false
 // fx:    {flash: t, color, dur, peak} | {burst: t, colors, pos, stroke} | {ring: t, pos, size, color, dur} |
 //        {frame: t, size, pos, color, width} | {bars: t, band, out, still} (still: no slam, for a letterbox kept across cuts) | {black: [t0, t1]} | {rule: t, pos, len, vertical, color, width, dur} |
@@ -494,15 +495,24 @@
             var made = [], n = comp.numLayers - before;          // new layers sit at the top (index 1..n)
             for (var q = 1; q <= n; q++) made.push(comp.layer(q));
             if (x.behind && fg) for (q = 0; q < made.length; q++) made[q].moveAfter(q ? made[q - 1] : fg);
-            var pl = pick(x, "plate", null);
-            if (pl && typeof pl === "string") pl = {kind: pl};
-            if (pl && !(pl.kind === "halo" && imageText))
-                MV.plate(comp, groups, ts, {kind: pl.kind, color: col(pl.color), opacity: pl.opacity, pad: pl.pad, dur: pl.dur, soft: pl.soft,
-                                            wipe: pl.wipe, size: x.size || 120});
+            // plate may be one or a list (e.g. a scrim under the line and a halo on the letters); with fade, the plates dim with the line
+            var pls = pick(x, "plate", null), plKinds = [];
+            if (pls && !(pls instanceof Array)) pls = [pls];
+            for (var pi = 0; pls && pi < pls.length; pi++) {
+                var pl = typeof pls[pi] === "string" ? {kind: pls[pi]} : pls[pi];
+                if (!pl || (pl.kind === "halo" && imageText)) continue;
+                plKinds.push(pl.kind);
+                var pm = MV.plate(comp, groups, ts, {kind: pl.kind, color: col(pl.color), opacity: pl.opacity, pad: pl.pad, dur: pl.dur, soft: pl.soft,
+                                                     wipe: pl.wipe, size: x.size || 120});
+                for (var pf = 0; x.fade && pf < pm.length; pf++) {
+                    var po = MV.tr(pm[pf], "opacity");
+                    MV.keys(po, [[T(x.fade[0]), po.valueAtTime(T(x.fade[0]), false)], [T(x.fade[1]), 0]], "inout");
+                }
+            }
             if (P.qa && x.qa !== false) {
                 var shown = [], cand = qaOnly || made;
                 for (q = 0; q < cand.length; q++) if (cand[q].enabled) shown.push(cand[q]);
-                QA.push({layers: shown, t: ts, shot: s + 1, text: i + 1, label: x.name || x.text, plate: pl ? pl.kind : null,
+                QA.push({layers: shown, t: ts, shot: s + 1, text: i + 1, label: x.name || x.text, plate: plKinds.length ? plKinds.join("+") : null,
                          size: x.size || 120, mode: x.mode || "line", fill: imageText ? null : (x.fill === undefined ? "#ffffff" : x.fill), accent: !!x.accent,
                          stroke: x.stroke || null});
             }

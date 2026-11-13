@@ -983,7 +983,7 @@ MV.pathShape = function (comp, kind, size, o) {
 
 // 読ませる入れ物 under lyrics. groups: [[layers], ...] (one group per line or vertical column); t: a time when the letters
 // have settled (their size is read then). o.kind: "strip" (a band behind each group), "box" (one box around every group),
-// "scrim" (a soft dark patch), "halo" (a dark glow on the letters themselves). o: {color, opacity, pad, dur, wipe, size, soft}
+// "scrim" (a soft dark patch), "halo" (a dark glow on the letters themselves). o: {color, opacity, pad, dur (0: no fade-in), wipe, size, soft (halo blur / scrim feather)}
 MV.plate = function (comp, groups, t, o) {
     o = o || {};
     var kind = o.kind || "strip", made = [], g, i;
@@ -1011,7 +1011,7 @@ MV.plate = function (comp, groups, t, o) {
         var bw = w + 2 * (horiz ? along : p), bh = h + 2 * (horiz ? p : along), cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, P, op;
         if (kind === "scrim") {
             P = MV.solid(comp, o.color || [0, 0, 0], "plate scrim");
-            var fe = Math.max(bw, bh) * 0.22;
+            var fe = o.soft !== undefined ? o.soft : Math.max(bw, bh) * 0.22;     // soft: feather px (keep it under half the height)
             MV.rectMask(P, cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2).property("ADBE Mask Feather").setValue([fe, fe]);
             op = o.opacity || 60;
         } else {
@@ -1023,7 +1023,7 @@ MV.plate = function (comp, groups, t, o) {
         MV.span(P, tin, tout);
         MV.tr(P, "opacity").setValue(op);
         if (kind === "strip" && o.wipe !== false) MV.keys(MV.tr(P, "scale"), [[tin, horiz ? [0, 100] : [100, 0]], [tin + (o.dur || 0.2), [100, 100]]], "out");
-        else MV.keys(MV.tr(P, "opacity"), [[tin, 0], [tin + (o.dur || 0.25), op]], "out");
+        else if (o.dur !== 0) MV.keys(MV.tr(P, "opacity"), [[tin, 0], [tin + (o.dur || 0.25), op]], "out");   // dur 0: no fade-in (a line carried over a cut)
         var low = Ls[0];
         for (i = 1; i < Ls.length; i++) if (Ls[i].index > low.index) low = Ls[i];
         P.moveAfter(low);
