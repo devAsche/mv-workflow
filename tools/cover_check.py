@@ -70,7 +70,7 @@ def main():
           band = band_of(s)
           m, at = margin(b, s, t0, t1, 1.0, band)
           need = ""
-          if m < 4:
+          if m < 0:
               zf = 1.0
               while margin(b, s, t0, t1, zf, band)[0] < 4 and zf < 2: zf += 0.005
               need = f"-> zoom x{zf:.3f} (looks {[round(l[1] * zf) for l in (b.get('look') or [[0, 100]])]})"
