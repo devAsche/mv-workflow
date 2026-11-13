@@ -39,7 +39,7 @@
 //                 rgb: [t0, t1], strobe: [t0, t1], kira: t, turb: [t0, t1, amount], rough: true,
 //                 image: {img, strobe: [t0, t1], kira: t, jolt: [t0, t1, amp], outline: color}, opacity, grow: [from%, to%]
 //         chars:  words (each character appears at its time), pop, stretch, drop, smear: {dur, angle, len}, strobe: [t0, t1],
-//                 scatter: {t, dur, dist}, crumble: {t, dur}, x/top (vchars)}
+//                 scatter: {t, dur, dist}, crumble: {t, dur}, fade: [t0, t1] (every character dims to 0 together), x/top (vchars)}
 //         write:  handwritten (accent words): hand: key in params.hand (or the word itself: {chars: [{char, strokes, drips}], bbox,
 //                 lines}), times: [song time each character starts], durs: [s] | dur, size: height of the word in px, width: pen px,
 //                 drips, dripDur, lines: {t, dur, width, opacity, gap} (the title's hairlines), rough, taper, move: [[t, scale%, [x, y]]],
@@ -307,6 +307,8 @@
         if (x.scatter) MV.scatterIn(chars, T(x.scatter.t), {dur: x.scatter.dur, dist: x.scatter.dist, order: x.scatter.order});
         if (x.crumble) MV.crumbleOut(chars, T(x.crumble.t), {dur: x.crumble.dur, spread: x.crumble.spread});
         if (x.hopAt) for (var h = 0; h < chars.length; h++) MV.bounce(chars[h], T(x.hopAt) + h * 0.05, 0.3, x.hopH || 40);
+        if (x.fade) for (var fd = 0; fd < chars.length; fd++)     // the whole line dims away together (after it is sung)
+            if (chars[fd].enabled) MV.keys(MV.tr(chars[fd], "opacity"), [[T(x.fade[0]), 100], [T(x.fade[1]), 0]], "inout");
         return chars;
     }
 
