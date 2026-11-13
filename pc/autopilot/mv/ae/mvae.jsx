@@ -983,7 +983,9 @@ MV.pathShape = function (comp, kind, size, o) {
 
 // 読ませる入れ物 under lyrics. groups: [[layers], ...] (one group per line or vertical column); t: a time when the letters
 // have settled (their size is read then). o.kind: "strip" (a band behind each group), "box" (one box around every group),
-// "scrim" (a soft dark patch), "halo" (a dark glow on the letters themselves). o: {color, opacity, pad, dur (0: no fade-in), wipe, size, soft (halo blur / scrim feather)}
+// "scrim" (a soft dark patch), "halo" (a dark glow on the letters themselves), "rim" (a hairline dark edge and a soft pale drop
+// shadow on the letters: color/opacity are the shadow's, edge px, edgeOpacity %, edgeColor, dist, soft).
+// o: {color, opacity, pad, dur (0: no fade-in), wipe, size, soft (halo blur / scrim feather / rim shadow softness)}
 MV.plate = function (comp, groups, t, o) {
     o = o || {};
     var kind = o.kind || "strip", made = [], g, i;
@@ -994,6 +996,34 @@ MV.plate = function (comp, groups, t, o) {
                   "ADBE Drop Shadow-0004": 0, "ADBE Drop Shadow-0005": o.soft || Math.round(sz * 0.12)});
             MV.fx(groups[g][i], "ADBE Drop Shadow", {"ADBE Drop Shadow-0001": hc, "ADBE Drop Shadow-0002": 200 * k,
                   "ADBE Drop Shadow-0004": 0, "ADBE Drop Shadow-0005": Math.round((o.soft || sz * 0.12) * 4)});
+        }
+        return made;
+    }
+    if (kind === "rim") {             // a hairline dark edge on the letters and a soft pale drop shadow (2026-11-13: the dark halo read as eerie)
+        var rs = o.size || 100, ew = o.edge !== undefined ? o.edge : Math.max(1.2, rs * 0.022);   // ew: visible edge outside the glyph, px
+        var eo = o.edgeOpacity !== undefined ? o.edgeOpacity : 45, ec = o.edgeColor || [0, 0, 0];
+        var so = (o.opacity !== undefined ? o.opacity : 35) / 100, scol = (o.color || [1, 1, 1]).concat([1]);
+        var dist = o.dist !== undefined ? o.dist : Math.max(2, Math.round(rs * 0.045)), soft = o.soft !== undefined ? o.soft : Math.round(rs * 0.1);
+        for (g = 0; g < groups.length; g++) for (i = 0; i < groups[g].length; i++) {
+            var RL = groups[g][i], tprops = null;
+            try { tprops = RL.property("ADBE Text Properties"); } catch (e0) {}
+            if (tprops) {             // text: a real stroke under the fill (only its outer half shows), dimmed by an animator
+                var tdoc = tprops.property("ADBE Text Document"), tv = tdoc.value;
+                tv.applyStroke = true; tv.strokeWidth = ew * 2; tv.strokeOverFill = false;
+                tv.strokeColor = ec;
+                tdoc.setValue(tv);
+                try { MV.animator(RL, {"ADBE Text Stroke Opacity": eo}, {}); MV._rimEdge = "animator"; }
+                catch (e1) {          // no stroke opacity in this AE: mix the edge colour toward the fill instead
+                    tv = tdoc.value; var k2 = eo / 100;
+                    tv.strokeColor = [ec[0] * k2 + 0.55 * (1 - k2), ec[1] * k2 + 0.57 * (1 - k2), ec[2] * k2 + 0.62 * (1 - k2)];
+                    tdoc.setValue(tv); MV._rimEdge = "grey";
+                }
+            } else {                  // strokes drawn as shapes (handwriting): a tight dark shadow stands in for the edge
+                MV.fx(RL, "ADBE Drop Shadow", {"ADBE Drop Shadow-0001": ec.concat([1]), "ADBE Drop Shadow-0002": 255 * eo / 100,
+                      "ADBE Drop Shadow-0004": 0, "ADBE Drop Shadow-0005": Math.max(1, ew * 1.5)});
+            }
+            MV.fx(RL, "ADBE Drop Shadow", {"ADBE Drop Shadow-0001": scol, "ADBE Drop Shadow-0002": 255 * so,
+                  "ADBE Drop Shadow-0003": 135, "ADBE Drop Shadow-0004": dist, "ADBE Drop Shadow-0005": soft});
         }
         return made;
     }

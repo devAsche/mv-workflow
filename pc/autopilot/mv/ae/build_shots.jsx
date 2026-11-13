@@ -48,7 +48,8 @@
 //                 wires: [wire index per character], xs: [landing x per character], ys: [y per wire], slope, sag, flow (px/s), amp,
 //                 dipW, ring, drops: [{t, wire, x, amp}] (drops without letters), wireColor, wireWidth, wireOpacity, lift, fall, bead
 //         both:   hscale, vscale, kana, skew (shape of the type), slice: [{t, shift, frac, dur}], stretchAt: [t, k], behind: true
-//                 (placed under the character cut-out), plate: "strip" | "box" | "scrim" | "halo" or {kind, color, opacity, pad, dur},
+//                 (placed under the character cut-out), plate: "strip" | "box" | "scrim" | "halo" | "rim" or {kind, color, opacity, pad, dur},
+//                 (rim: a hairline dark edge {edge px, edgeOpacity, edgeColor} and a soft pale drop shadow {color, opacity, dist, soft}),
 //                 or a list of them (a scrim under the line and a halo on the letters); plates dim with the line's fade
 //                 (something under the letters so they read on any picture; type.plate sets it for every lyric), qa: false
 // fx:    {flash: t, color, dur, peak} | {burst: t, colors, pos, stroke} | {ring: t, pos, size, color, dur} |
@@ -500,10 +501,11 @@
             if (pls && !(pls instanceof Array)) pls = [pls];
             for (var pi = 0; pls && pi < pls.length; pi++) {
                 var pl = typeof pls[pi] === "string" ? {kind: pls[pi]} : pls[pi];
-                if (!pl || (pl.kind === "halo" && imageText)) continue;
+                if (!pl || ((pl.kind === "halo" || pl.kind === "rim") && imageText)) continue;
                 plKinds.push(pl.kind);
                 var pm = MV.plate(comp, groups, ts, {kind: pl.kind, color: col(pl.color), opacity: pl.opacity, pad: pl.pad, dur: pl.dur, soft: pl.soft,
-                                                     wipe: pl.wipe, size: x.size || 120});
+                                                     wipe: pl.wipe, size: x.size || 120, edge: pl.edge, edgeOpacity: pl.edgeOpacity,
+                                                     edgeColor: col(pl.edgeColor), dist: pl.dist});
                 for (var pf = 0; x.fade && pf < pm.length; pf++) {
                     var po = MV.tr(pm[pf], "opacity");
                     MV.keys(po, [[T(x.fade[0]), po.valueAtTime(T(x.fade[0]), false)], [T(x.fade[1]), 0]], "inout");
@@ -518,7 +520,7 @@
             }
         }
         for (i = 0; S.fx && i < S.fx.length; i++) if (!under(S.fx[i])) buildFx(S.fx[i], a, z);
-        mvlog("shot " + (s + 1) + " " + S.t0 + "-" + S.t1 + " done, layers " + comp.numLayers);
+        mvlog("shot " + (s + 1) + " " + S.t0 + "-" + S.t1 + " done, layers " + comp.numLayers + (MV._rimEdge ? ", rim edge " + MV._rimEdge : ""));
     }
 
     MV._seed = 99991;
