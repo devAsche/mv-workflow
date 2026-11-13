@@ -984,7 +984,7 @@ MV.pathShape = function (comp, kind, size, o) {
 // 読ませる入れ物 under lyrics. groups: [[layers], ...] (one group per line or vertical column); t: a time when the letters
 // have settled (their size is read then). o.kind: "strip" (a band behind each group), "box" (one box around every group),
 // "scrim" (a soft dark patch), "halo" (a dark glow on the letters themselves), "rim" (a hairline dark edge and a soft pale drop
-// shadow on the letters: color/opacity are the shadow's, edge px, edgeOpacity %, edgeColor, dist, soft).
+// shadow on the letters: color/opacity are the shadow's, edge px, edgeOpacity % (0: no edge), edgeColor, dist, soft).
 // o: {color, opacity, pad, dur (0: no fade-in), wipe, size, soft (halo blur / scrim feather / rim shadow softness)}
 MV.plate = function (comp, groups, t, o) {
     o = o || {};
@@ -999,7 +999,8 @@ MV.plate = function (comp, groups, t, o) {
         }
         return made;
     }
-    if (kind === "rim") {             // a hairline dark edge on the letters and a soft pale drop shadow (2026-11-13: the dark halo read as eerie)
+    if (kind === "rim") {             // a hairline dark edge on the letters and a soft pale drop shadow (2026-11-13: the dark halo read as eerie;
+                                      // later the same day even the faint edge read as odd -> edgeOpacity 0 leaves the edge out)
         var rs = o.size || 100, ew = o.edge !== undefined ? o.edge : Math.max(1.2, rs * 0.022);   // ew: visible edge outside the glyph, px
         var eo = o.edgeOpacity !== undefined ? o.edgeOpacity : 45, ec = o.edgeColor || [0, 0, 0];
         var so = (o.opacity !== undefined ? o.opacity : 35) / 100, scol = (o.color || [1, 1, 1]).concat([1]);
@@ -1007,7 +1008,8 @@ MV.plate = function (comp, groups, t, o) {
         for (g = 0; g < groups.length; g++) for (i = 0; i < groups[g].length; i++) {
             var RL = groups[g][i], tprops = null;
             try { tprops = RL.property("ADBE Text Properties"); } catch (e0) {}
-            if (tprops) {             // text: a real stroke under the fill (only its outer half shows), dimmed by an animator
+            if (!(eo > 0 && ew > 0)) { MV._rimEdge = "none"; }   // edgeOpacity 0: no dark edge at all, only the pale shadow
+            else if (tprops) {        // text: a real stroke under the fill (only its outer half shows), dimmed by an animator
                 var tdoc = tprops.property("ADBE Text Document"), tv = tdoc.value;
                 tv.applyStroke = true; tv.strokeWidth = ew * 2; tv.strokeOverFill = false;
                 tv.strokeColor = ec;
