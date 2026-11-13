@@ -47,6 +47,7 @@ def margin(b, s, t0, t1, zf, band):
         for lk in looks:
             k = base * lk[1] * zf / 100
             f = lk[2] if lk[2] else (sw / 2, sh / 2)
+            if lk[2] and (b.get("mirror") or b.get("flip")): f = (2 * a[0] - f[0], f[1])   # buildBg flips the focus too
             sc = lk[3] if len(lk) > 3 and lk[3] else (W / 2, H / 2)
             x = sc[0] - (f[0] - a[0]) * k; y = sc[1] - (f[1] - a[1]) * k
             x = min(a[0] * k, max(W - (sw - a[0]) * k, x)); y = min(a[1] * k, max(H - (sh - a[1]) * k, y))
