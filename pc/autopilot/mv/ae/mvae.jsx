@@ -74,6 +74,15 @@ MV.span = function (layer, tIn, tOut) {   // show a layer only from tIn to tOut 
     layer.outPoint = tOut;
     return layer;
 };
+// move a layer's in point without moving its out point. 2026-11-13: setting inPoint on a trimmed text layer moved its out
+// point by the same amount (a carried-over line lost its first letter at tOut while the later letters stayed on screen,
+// each as long as it had come in late)
+MV.setIn = function (layer, t) {
+    var out = layer.outPoint;
+    layer.inPoint = t;
+    if (Math.abs(layer.outPoint - out) > 1e-6) layer.outPoint = out;
+    return layer;
+};
 
 // ---------------------------------------------------------------- fonts and text
 MV.fontPS = function (family, style) {
@@ -528,7 +537,7 @@ MV.scatterIn = function (chars, t, o) {
         MV.keys(MV.tr(L, "rotation"), [[ti, MV.rand(-1, 1) * (o.rot || 160)], [ti + dur, 0]], "out");
         MV.keys(MV.tr(L, "scale"), [[ti, [o.scale || 260, o.scale || 260]], [ti + dur, [100, 100]]], "out");
         MV.keys(MV.tr(L, "opacity"), [[ti, 0], [ti + dur * 0.3, 100]], "linear");
-        if (L.inPoint > ti) L.inPoint = ti;
+        if (L.inPoint > ti) MV.setIn(L, ti);
         MV.blur(L);
     }
     return chars;
@@ -558,8 +567,8 @@ MV.charsAt = function (chars, times, o) {
     for (var i = 0; i < chars.length; i++) {
         var L = chars[i], ti = times[Math.min(i, times.length - 1)];
         if (o.until !== undefined && ti >= o.until - 0.001) { L.enabled = false; continue; }
-        if (o.from !== undefined && ti <= o.from + 0.001) { L.inPoint = Math.max(L.inPoint, o.from); continue; }
-        L.inPoint = Math.max(0, ti);
+        if (o.from !== undefined && ti <= o.from + 0.001) { MV.setIn(L, Math.max(L.inPoint, o.from)); continue; }
+        MV.setIn(L, Math.max(0, ti));
         var s = MV.tr(L, "scale").valueAtTime(ti, false);
         if (o.stretch) MV.keys(MV.tr(L, "scale"), [[ti, [s[0] * 0.85, s[1] * o.stretch]], [ti + (o.dur || 0.12), s]], "out");
         else if (o.pop !== 1) MV.keys(MV.tr(L, "scale"), [[ti, [s[0] * (o.pop || 1.6), s[1] * (o.pop || 1.6)]], [ti + (o.dur || 0.15), s]], "out");
@@ -573,7 +582,7 @@ MV.charsAt = function (chars, times, o) {
 };
 
 MV.spanAll = function (layers, tIn, tOut) {
-    for (var i = 0; i < layers.length; i++) { if (tIn !== null) layers[i].inPoint = Math.max(layers[i].inPoint, tIn); layers[i].outPoint = tOut; }
+    for (var i = 0; i < layers.length; i++) { if (tIn !== null) MV.setIn(layers[i], Math.max(layers[i].inPoint, tIn)); layers[i].outPoint = tOut; }
     return layers;
 };
 
@@ -1286,7 +1295,7 @@ MV.write = function (comp, word, o) {
     }
     if (o.rough !== 0) MV.fx(L, "ADBE Roughen Edges", {"ADBE Roughen Edges-0002": o.rough || Math.max(0.8, w * 0.22),
                                                         "ADBE Roughen Edges-0005": 25, "ADBE Roughen Edges-0008": 3});
-    if (first < 1e9) L.inPoint = Math.max(0, first - comp.frameDuration);
+    if (first < 1e9) MV.setIn(L, Math.max(0, first - comp.frameDuration));
     return {layer: L, end: end};
 };
 

@@ -63,9 +63,9 @@ def margin(b, s, t0, t1, zf, band):
         if m < worst[0]: worst = (m, round(t, 2))
     return worst
 def main():
-    for s in mj.S:
+    for s in getattr(mj, "ALL", None) or mj.S:
       for b in [s.get("bg") or {}] + list(s.get("bgs") or []):
-          if not b.get("img") or b.get("win"): continue
+          if not b.get("img") or b.get("win") or b.get("cutout"): continue
           if b.get("rot", b.get("tilt")) is None and not b.get("mirror"): continue
           t0 = b.get("tIn", s["t0"]); t1 = b.get("tOut", s["t1"])
           band = band_of(s)

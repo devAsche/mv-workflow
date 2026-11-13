@@ -103,6 +103,7 @@
         if (b.solid) L = MV.solid(comp, col(b.solid), "bg");
         else L = MV.layerFrom(comp, b.img, {fit: "cover", extra: b.extra || 1.12, name: "bg " + b.img.replace(/^.*[\\\/]/, "")});
         spanRange(L, tA, tZ);
+        if (b.cutout) cover = false;                         // a cut-out figure: free size and place, not clamped to cover the frame
         if (win && win.fit !== false && !b.solid) {          // the whole picture, small, inside the window
             var kw = Math.max(win.size[0] / L.source.width, win.size[1] / L.source.height) * 100 * (b.extra || 1.04);
             MV.tr(L, "scale").setValue([kw, kw]);
@@ -136,7 +137,7 @@
             var lm = [], sw = L.source.width, shh = L.source.height;
             for (var j = 0; j < b.look.length; j++) {
                 var lk = b.look[j], f = lk[2] ? [flipped ? 2 * about[0] - lk[2][0] : lk[2][0], lk[2][1]] : [sw / 2, shh / 2], kk = base * lk[1] / 100;
-                lm.push([T(lk[0]), kk, MV.focusPos(L, kk, f, lk[3] || (cover ? null : (win.pos || [W / 2, H / 2])), !cover)]);
+                lm.push([T(lk[0]), kk, MV.focusPos(L, kk, f, lk[3] || (cover ? null : ((win && win.pos) || [W / 2, H / 2])), !cover)]);
             }
             MV.move(L, lm, b.ease || "inout");
         }
@@ -145,6 +146,42 @@
             if (typeof rot === "number") MV.tr(L, "rotation").setValue(rot);
             else { var rk = []; for (var ri = 0; ri < rot.length; ri++) rk.push([T(rot[ri][0]), rot[ri][1]]); MV.keys(MV.tr(L, "rotation"), rk, b.ease || "inout"); }
         }
+        if (b.drift) {                                        // an extra sideways/vertical move added on top of look (figure layers)
+            var dk = [];
+            for (var di = 0; di < b.drift.length; di++) dk.push("[" + T(b.drift[di][0]) + "," + b.drift[di][1] + "," + b.drift[di][2] + "]");
+            MV.expr(MV.tr(L, "position"), "var k=[" + dk.join(",") + "], o=[k[0][1],k[0][2]];" +
+                "for (var i=0;i<k.length-1;i++) if (time>=k[i][0] && time<k[i+1][0]) " +
+                "o=[ease(time,k[i][0],k[i+1][0],k[i][1],k[i+1][1]), ease(time,k[i][0],k[i+1][0],k[i][2],k[i+1][2])];" +
+                "if (time>=k[k.length-1][0]) o=[k[k.length-1][1],k[k.length-1][2]]; value + o;");
+        }
+        if (b.fill) MV.silhouette(L, col(b.fill));
+        if (b.smear) MV.smear(L, T(b.smear.t), b.smear.dur, b.smear.angle, b.smear.len);
+        if (b.trail) {                                        // copies that follow the layer's own move a little late
+            for (var tq = 1; tq <= (b.trail.n || 3); tq++) {
+                var tc = L.duplicate();
+                tc.moveAfter(L);
+                tc.name = L.name + " trail " + tq;
+                var lag = (b.trail.lag || 0.06) * tq;
+                MV.expr(MV.tr(tc, "position"), "valueAtTime(time - " + lag + ")");
+                MV.expr(MV.tr(tc, "scale"), "valueAtTime(time - " + lag + ")");
+                MV.expr(MV.tr(tc, "rotation"), "valueAtTime(time - " + lag + ")");
+                MV.tr(tc, "opacity").setValue((b.trail.opacity || 40) * Math.pow(0.6, tq - 1));
+                if (b.trail.color) MV.silhouette(tc, col(b.trail.color));
+            }
+        }
+        if (b.ghosts) {                                       // filled copies, each a step larger (outline clones of a figure)
+            for (var gq = 1; gq <= (b.ghosts.n || 3); gq++) {
+                var gc = L.duplicate();
+                gc.moveAfter(L);
+                gc.name = L.name + " ghost " + gq;
+                MV.silhouette(gc, col(b.ghosts.color || "#e8ebf5"));
+                MV.expr(MV.tr(gc, "scale"), "value * " + (1 + (b.ghosts.step || 0.04) * gq));
+                MV.tr(gc, "opacity").setValue((b.ghosts.opacity || 18) * Math.pow(0.7, gq - 1));
+                if (b.ghosts.t !== undefined) MV.keys(MV.tr(gc, "opacity"), [[T(b.ghosts.t), 0], [T(b.ghosts.t) + 0.1, (b.ghosts.opacity || 18) * Math.pow(0.7, gq - 1)],
+                                                                         [T(b.ghosts.t) + (b.ghosts.dur || 0.8), 0]], "out");
+            }
+        }
+        if (b.strobe) MV.strobe(L, T(b.strobe[0]), T(b.strobe[1]), b.strobe[2] || 2);
         if (b.punch) MV.punch(L, T(b.punch.t), b.punch.big || 160, b.punch.dur || 0.3);
         if (b.blinds) MV.blindsIn(L, T(b.blinds.t), b.blinds.dur, b.blinds.angle, b.blinds.width);
         if (b.mosaic) MV.mosaicIn(L, T(b.mosaic.t), b.mosaic.dur, b.mosaic.from);
@@ -156,7 +193,16 @@
             for (var oi = 0; oi < b.opacity.length; oi++) ok.push([T(b.opacity[oi][0]), b.opacity[oi][1]]);
             MV.keys(MV.tr(L, "opacity"), ok, "inout");
         } else if (b.opacity !== undefined) MV.tr(L, "opacity").setValue(b.opacity);
-        if (win) MV.windowOn(comp, L, win.shape || "rect", win.size, win.pos || [W / 2, H / 2], {border: col(win.border), width: win.width});
+        if (win) {
+            var wo = MV.windowOn(comp, L, win.shape || "rect", win.size, win.pos || [W / 2, H / 2], {border: col(win.border), width: win.width});
+            if (win.open) {                                   // the window grows from win.open.from (% of its size) = an iris / slit reveal
+                var wf = win.open.from || [0, 100], wt = T(win.open.t !== undefined ? win.open.t : tA), wd = win.open.dur || 0.6;
+                var wk = [[wt, wf], [wt + wd, [100, 100]]];
+                if (win.open.close !== undefined) wk.push([T(win.open.close), [100, 100]], [T(win.open.close) + (win.open.cdur || 0.4), wf]);
+                MV.keys(MV.tr(wo.matte, "scale"), wk, win.open.ease || "out");
+                if (wo.border) MV.keys(MV.tr(wo.border, "scale"), wk, win.open.ease || "out");
+            }
+        }
         if (b.inside) MV.insideOf(comp, L, b.inside.img, {h: b.inside.h, pos: b.inside.pos, rim: col(b.inside.rim)});
         return L;
     }
@@ -277,7 +323,7 @@
                                       lines: x.lines ? {t: T(x.lines.t), dur: x.lines.dur, width: x.lines.width, opacity: x.lines.opacity, gap: x.lines.gap} : null});
         var L = r.layer;
         L.outPoint = z;
-        if (L.inPoint < a) L.inPoint = a;
+        if (L.inPoint < a) MV.setIn(L, a);
         if (x.opacity !== undefined) MV.tr(L, "opacity").setValue(x.opacity);
         if (x.move) {
             var base = MV.tr(L, "scale").value[0], m = [];
