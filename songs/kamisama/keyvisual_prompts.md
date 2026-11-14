@@ -1,0 +1,26 @@
+# 神様のコレクション: 構成案づくりの記録（2026-11-15）
+
+曲・歌詞・ジャケ写・描いた絵はこのリポジトリに入れない。ここには手順と指示文だけを残す。
+
+- 解析: ランナーの `mv_analyze` ジョブ `20261115-0150-kamisama-analyze`（Demucs＋Beat This!＋Whisper medium）。4分42秒、BPM 100、1小節2.4秒。
+- ジャケ写の色: 色相 約227度、明るさの中央値 33/255（暗部が8割）。参照画像は `ComfyUI\input\mv_kami_jacket_ref.png`。
+- 見本の絵: `comfy_graph` ジョブ、グラフ `h3_image_ref1_v1.json`、3072x1728、各2案。
+- 結果: 収蔵庫(k1)と人のいない広間(k3)はジャケ写に近い絵柄になった。街(k4)は2案のうちaが線の太い平らな塗りになり、bは近かった。横長のジャケ写(k5)は2案とも描けた。構成案のDoc: https://claude.ai/artifact/J1xhEzRXn7BRixZnVRkt3J
+
+## 指示文
+
+### 20261115-0200-kami-k1 (seed a: 4100)
+
+A vast, dark collector's archive seen at a slight angle: tall antique wooden shelves recede into darkness, lined with rows of glass bell jars and glass display cases. Inside each jar rests one object that softly glows from within with a pale warm-gold light: a violin, a pair of worn ballet shoes, a fountain pen, a paintbrush, a small music box, a single white feather. Small blank brass plates are fixed below each jar. One jar in the foreground is empty and dark. Cold moonlight falls from a tall arched gothic window at the far end; dark blue roses and thorned vines creep along the shelves. Paint this with exactly the same hand, the same level of fine detail and the same lighting as <Picture 1>: a dark, gothic, painterly illustration with dramatic cold moonlight, soft volumetric light shafts and drifting dust, deep near-black shadows and pale lavender-white highlights. The palette is almost monochrome: deep indigo and desaturated blue-violet greys only. The single exception to the monochrome palette is a small, soft, pale warm-gold glow, used only where described. Use <Picture 1> only as a reference for the style and the world; do not copy its composition. This is an empty scene: there are no people, no human figures and no silhouettes anywhere in the picture. The image contains no text, no letters and no writing that can be read.
+
+### 20261115-0200-kami-k3 (seed a: 4174)
+
+The same ruined gothic hall and the same black grand piano as <Picture 1>, seen from a little farther back and slightly to the side, but nobody is there: the piano stool is empty and pushed slightly back, the keyboard lid is open, and a single unfinished sheet of music rests on the music stand. Loose pages of sheet music drift slowly upward through the shaft of moonlight from the tall arched windows, as if being lifted toward the ceiling. Dark blue roses and thorned vines lie on the wet reflective floor. Paint this with exactly the same hand, the same level of fine detail and the same lighting as <Picture 1>: a dark, gothic, painterly illustration with dramatic cold moonlight, soft volumetric light shafts and drifting dust, deep near-black shadows and pale lavender-white highlights. The palette is almost monochrome: deep indigo and desaturated blue-violet greys only. Use <Picture 1> only as a reference for the style and the world; do not copy its composition. This is an empty scene: there are no people, no human figures and no silhouettes anywhere in the picture. The image contains no text, no letters and no writing that can be read.
+
+### 20261115-0200-kami-k4 (seed a: 4248)
+
+A quiet, unknown town at night seen from a high window: layered rooftops, chimneys, a church spire and a distant railway bridge under a clouded moonlit sky. Among hundreds of dark windows, a handful glow with a small pale warm-gold light. In the near foreground on the windowsill sits a small old radio and a single dark blue rose in a glass. Paint this with exactly the same hand, the same level of fine detail and the same lighting as <Picture 1>: a dark, gothic, painterly illustration with dramatic cold moonlight, soft volumetric light shafts and drifting dust, deep near-black shadows and pale lavender-white highlights. The palette is almost monochrome: deep indigo and desaturated blue-violet greys only. The single exception to the monochrome palette is a small, soft, pale warm-gold glow, used only where described. Use <Picture 1> only as a reference for the style and the world; do not copy its composition. This is an empty scene: there are no people, no human figures and no silhouettes anywhere in the picture. The image contains no text, no letters and no writing that can be read.
+
+### 20261115-0200-kami-k5 (seed a: 4322)
+
+Recreate <Picture 1> as a wide 16:9 illustration: the same girl in the same long black dress slumped asleep over the same black grand piano with her face hidden in her arms, the same piano stool, the same chandelier with hanging crystal drops, the same tall arched gothic windows with moonlight, the same dark blue roses and thorned vines, the same fallen birdcage and the same scattered sheet music on the wet reflective floor. Keep the piano and the girl at the centre and extend the hall naturally to the left and to the right. Paint this with exactly the same hand, the same level of fine detail and the same lighting as <Picture 1>: a dark, gothic, painterly illustration with dramatic cold moonlight, soft volumetric light shafts and drifting dust, deep near-black shadows and pale lavender-white highlights. The palette is almost monochrome: deep indigo and desaturated blue-violet greys only. The image contains no text, no letters and no writing that can be read.
