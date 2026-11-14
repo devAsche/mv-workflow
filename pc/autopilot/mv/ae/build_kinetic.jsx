@@ -46,7 +46,8 @@
     }
 
     // ------------------------------------------------------------ keys with an ease per key
-    var EASE = {out: [95, 0.1], "in": [0.1, 95], inout: [75, 75], snap: [99, 0.1], soft: [60, 20]};
+    // [influence leaving the key, influence arriving at the next key]: a tiny leaving influence = a fast start
+    var EASE = {out: [0.1, 95], "in": [95, 0.1], inout: [75, 75], snap: [0.1, 99], soft: [20, 60]};
     function isKeys(v) { return v instanceof Array && v.length && v[0] instanceof Array && typeof v[0][0] === "number" &&
                                 v[0].length >= 2 && (v[0].length === 3 || typeof v[0][2] !== "number" || v[0].length === 2) &&
                                 (v[0][1] instanceof Array || typeof v[0][1] === "number" || typeof v[0][1] === "string"); }
@@ -96,8 +97,11 @@
                 setK(s.property("ADBE Vector Stroke Width"), sw || 2);
                 if (S.dash) {
                     var d = s.property("ADBE Vector Stroke Dashes");
-                    d.addProperty("ADBE Vector Stroke Dash 1").setValue(S.dash[0]);
-                    d.addProperty("ADBE Vector Stroke Gap 1").setValue(S.dash[1]);
+                    d.addProperty("ADBE Vector Stroke Dash 1");
+                    d.addProperty("ADBE Vector Stroke Gap 1");
+                    d = v.property(v.numProperties).property("ADBE Vector Stroke Dashes");   // look up again after adding
+                    d.property("ADBE Vector Stroke Dash 1").setValue(S.dash[0]);
+                    d.property("ADBE Vector Stroke Gap 1").setValue(S.dash[1]);
                 }
             }
         }

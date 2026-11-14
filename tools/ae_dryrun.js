@@ -1,4 +1,4 @@
-// ae_dryrun.js - run a build_shots.jsx job against a small mock of After Effects' object model, in node, before
+// ae_dryrun.js - run a build_shots.jsx / build_kinetic.jsx job (the job's script) against a small mock of After Effects' object model, in node, before
 // spending an AE run on it. Catches script errors, unknown effects or effect parameters (checked against the matchNames
 // dumped from AE 25.6), NaN values, expression syntax errors and a stale shape-property reference after addProperty.
 // It does not draw anything and does not know AE's value ranges (an out-of-range value still fails only in AE).
@@ -14,11 +14,11 @@ const SHAPE_KIDS = {
   'ADBE Vector Shape - Group': ['ADBE Vector Shape'],
   'ADBE Vector Shape - Rect': ['ADBE Vector Rect Size', 'ADBE Vector Rect Position', 'ADBE Vector Rect Roundness'],
   'ADBE Vector Shape - Ellipse': ['ADBE Vector Ellipse Size', 'ADBE Vector Ellipse Position'],
-  'ADBE Vector Graphic - Stroke': ['ADBE Vector Stroke Color', 'ADBE Vector Stroke Opacity', 'ADBE Vector Stroke Width', 'ADBE Vector Stroke Line Cap', 'ADBE Vector Stroke Line Join'],
-  'ADBE Vector Graphic - Fill': ['ADBE Vector Fill Color', 'ADBE Vector Fill Opacity'],
+  'ADBE Vector Graphic - Stroke': ['ADBE Vector Stroke Color', 'ADBE Vector Stroke Opacity', 'ADBE Vector Stroke Width', 'ADBE Vector Stroke Line Cap', 'ADBE Vector Stroke Line Join', 'ADBE Vector Stroke Dashes'],
+  'ADBE Vector Graphic - Fill': ['ADBE Vector Fill Color', 'ADBE Vector Fill Opacity', 'ADBE Vector Fill Rule'],
   'ADBE Vector Filter - Trim': ['ADBE Vector Trim Start', 'ADBE Vector Trim End', 'ADBE Vector Trim Offset'],
 };
-const GROUPS = new Set(['ADBE Vectors Group', 'ADBE Root Vectors Group', 'ADBE Effect Parade', 'ADBE Mask Parade', 'ADBE Text Animators',
+const GROUPS = new Set(['ADBE Vector Stroke Dashes', 'ADBE Vectors Group', 'ADBE Root Vectors Group', 'ADBE Effect Parade', 'ADBE Mask Parade', 'ADBE Text Animators',
   'ADBE Text Selectors', 'ADBE Text Animator Properties', 'ADBE Transform Group', 'ADBE Text Properties', 'ADBE Text Range Advanced']);
 global.PropertyType = {PROPERTY: 1, INDEXED_GROUP: 2, NAMED_GROUP: 3};
 global.PropertyValueType = {NO_VALUE: 0, ThreeD_SPATIAL: 1, ThreeD: 2, TwoD_SPATIAL: 3, TwoD: 4, OneD: 5, COLOR: 6, SHAPE: 7};
@@ -87,11 +87,13 @@ class Prop {
     this.kids.push(c);
     return c;
   }
-  setValue(v) { this._chk(); if (this.isGroup) throw new Error('setValue on group ' + this.matchName); if (v === undefined || (typeof v === 'number' && isNaN(v))) throw new Error('bad value for ' + this.matchName + ': ' + v); if (Array.isArray(v) && v.some(x => typeof x === 'number' && isNaN(x))) throw new Error('NaN in ' + this.matchName); this._v = v; }
+  _dim(v) { if (/^ADBE (Anchor Point|Position|Scale)$/.test(this.matchName) && (this.propertyValueType === PropertyValueType.ThreeD_SPATIAL || this.propertyValueType === PropertyValueType.ThreeD) && Array.isArray(v) && v.length !== 3) throw new Error('3D property ' + this.matchName + ' given ' + v.length + ' values'); }
+  setValue(v) { this._chk(); this._dim(v); if (this.isGroup) throw new Error('setValue on group ' + this.matchName); if (v === undefined || (typeof v === 'number' && isNaN(v))) throw new Error('bad value for ' + this.matchName + ': ' + v); if (Array.isArray(v) && v.some(x => typeof x === 'number' && isNaN(x))) throw new Error('NaN in ' + this.matchName); this._v = v; }
   get value() { return this._v; }
   valueAtTime(t) { let v = this._v; const ks = this._keys.slice().sort((a, b) => a.t - b.t); for (const k of ks) if (k.t <= t + 1e-9) v = k.v; if (ks.length && t < ks[0].t) v = ks[0].v; return v; }
   addKey(t) { if (typeof t !== 'number' || isNaN(t)) throw new Error('bad key time on ' + this.matchName); STATS.keys++; let k = this._keys.findIndex(x => Math.abs(x.t - t) < 1e-6); if (k < 0) { this._keys.push({t, v: this._v}); this._keys.sort((a, b) => a.t - b.t); k = this._keys.findIndex(x => Math.abs(x.t - t) < 1e-6); } return k + 1; }
-  setValueAtKey(i, v) { if (v === undefined) throw new Error('undefined key value on ' + this.matchName); if (Array.isArray(v) && v.some(x => typeof x === 'number' && isNaN(x))) throw new Error('NaN key on ' + this.matchName); this._keys[i - 1].v = v; }
+  setValueAtKey(i, v) { this._dim(v); if (v === undefined) throw new Error('undefined key value on ' + this.matchName); if (Array.isArray(v) && v.some(x => typeof x === 'number' && isNaN(x))) throw new Error('NaN key on ' + this.matchName); this._keys[i - 1].v = v; }
+  setValueAtTime(t, v) { const i = this.addKey(t); this.setValueAtKey(i, v); }
   nearestKeyIndex(t) { let b = 1, d = 1e9; this._keys.forEach((k, i) => { if (Math.abs(k.t - t) < d) { d = Math.abs(k.t - t); b = i + 1; } }); return b; }
   setInterpolationTypeAtKey() {}
   setTemporalEaseAtKey(k, a, b) { const n = Array.isArray(this._v) && this.propertyValueType !== PropertyValueType.TwoD_SPATIAL && this.propertyValueType !== PropertyValueType.COLOR ? this._v.length : 1; if (a.length !== n || b.length !== n) throw new Error('ease dims ' + a.length + ' vs ' + n + ' on ' + this.matchName); }
@@ -114,6 +116,14 @@ class Layer {
     if (kind === 'shape') this.root.property('ADBE Root Vectors Group');
     if (kind === 'text') { const tp = this.root.property('ADBE Text Properties'); tp.property('ADBE Text Document').setValue(new TextDoc(src)); tp.property('ADBE Text Animators'); this.source = null; this._text = src; }
     if (kind === 'av' && src) this.root.property('ADBE Transform Group').property('ADBE Anchor Point').setValue([src.width / 2, src.height / 2]);
+  }
+  get threeDLayer() { return !!this._3d; }
+  set threeDLayer(on) {
+    if (!on) return; this._3d = true;
+    const tg = this.root.property('ADBE Transform Group');
+    for (const m of ['ADBE Anchor Point', 'ADBE Position']) { const p = tg.property(m); p._v = p._v.concat([0]).slice(0, 3); p.propertyValueType = PropertyValueType.ThreeD_SPATIAL; }
+    const sc = tg.property('ADBE Scale'); sc._v = sc._v.concat([100]).slice(0, 3); sc.propertyValueType = PropertyValueType.ThreeD;
+    tg.property('ADBE Rotate X').setValue(0); tg.property('ADBE Rotate Y').setValue(0);
   }
   copyToComp(c) { const L = new Layer(c, this.kind, this.source); L.name = this.name; c._add(L); return L; }
   get transform() { const tg = this.root.property('ADBE Transform Group'); return {scale: tg.property('ADBE Scale')}; }
@@ -140,6 +150,8 @@ class Comp {
     addSolid: (col, name, w, h) => { if (!(w > 0 && h > 0)) throw new Error('solid size'); const L = new Layer(c, 'av', {width: w, height: h, mainSource: {}}); L.name = name; return c._add(L); },
     addText: (s) => c._add(new Layer(c, 'text', s)),
     addShape: () => c._add(new Layer(c, 'shape')),
+    addNull: () => c._add(new Layer(c, 'null')),
+    addCamera: (n, p) => { const L = c._add(new Layer(c, 'camera')); L.threeDLayer = true; L.name = n; return L; },
     add: (item) => c._add(new Layer(c, 'av', item)),
   }; }
   saveFrameToPng(t, f) { if (typeof t !== 'number' || isNaN(t)) throw new Error('bad still time'); c_stills.push(t); f._exists = true; }
@@ -180,7 +192,7 @@ function run(jobPath, sizes) {
   global.MVJOB = {params: job.params, outdir: 'C:\\out', workdir: 'C:\\w'};
   const dir = path.join(__dirname, '..', 'pc', 'autopilot', 'mv', 'ae');
   const lib = fs.readFileSync(path.join(dir, 'mvae.jsx'), 'utf8').replace(/^\uFEFF/, '');
-  const bs = fs.readFileSync(path.join(dir, 'build_shots.jsx'), 'utf8').replace(/^\uFEFF/, '');
+  const bs = fs.readFileSync(path.join(dir, job.script ? job.script.split('\\').pop() : 'build_shots.jsx'), 'utf8').replace(/^\uFEFF/, '');
   (0, eval)(lib + '\n;global.MV = MV;');
   (0, eval)(bs);
   return {result: MVJOB.result, log: MVLOG, stats: STATS, stills: c_stills};
@@ -196,7 +208,7 @@ if (require.main === module) {
   console.log('effects', JSON.stringify(r.stats.effects));
   if (r.result.queued !== undefined) console.log('queued for aerender', r.result.queued, 'items:', RQ._items.map(it => it._om.file ? it._om.file.fsName.split(/[\\\/]/).pop() + '@' + it.timeSpanStart.toFixed(3) : '?').join(' '));
   if (r.result.qa !== undefined) console.log('qa items', r.result.qa);
-  if (r.result.upscale.length) console.log('pictures past their pixels', JSON.stringify(r.result.upscale));
+  if (r.result.upscale && r.result.upscale.length) console.log('pictures past their pixels', JSON.stringify(r.result.upscale));
   if (process.argv.indexOf('--expr') > 0) {
     const thisComp = {width: J.params.w, height: J.params.h}, OFF = J.params.offset || 0;
     const wires = r.stats.exprs.filter(e => e[0] === 'ADBE Vector Shape');
