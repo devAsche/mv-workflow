@@ -14,6 +14,7 @@
 #               from which tools/align_lyrics.py times every lyric character. Only the models in
 #               ALIGN_MODELS can be used; they are downloaded once into work\mv\models\hf.
 #   ae_script, ae_render        After Effects jobs, in mv_ae.py (v1.5)
+#   ai_script                   Illustrator jobs (COM), in mv_ai.py (v1.7)
 #   web_download, font_install  fonts and free assets, in mv_assets.py (v1.5)
 #   mv_cutout, ps_script        character cut-outs and Photoshop scripts, in mv_cutout.py (v1.6)
 #   model_download  saves one model file from Hugging Face into ComfyUI\models\<folder>\.
@@ -46,7 +47,7 @@ def register(runner):
     # v1.5: After Effects (mv_ae.py) and asset/font jobs (mv_assets.py); v1.6: cut-outs and Photoshop
     # (mv_cutout.py). A broken or missing file only
     # disables its own jobs.
-    for mod in ("mv_ae", "mv_assets", "mv_cutout"):
+    for mod in ("mv_ae", "mv_assets", "mv_cutout", "mv_ai"):
         try:
             handlers.update(__import__(mod).register(runner))
         except Exception as e:
