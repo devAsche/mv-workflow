@@ -1344,7 +1344,10 @@ MV.RAIN = {
     // 埃・光の粒 (神様のコレクション): sparse round specks from the same noise, drifting slowly; speed < 0 rises, > 0 falls
     dust: {sw: 1.6, sh: 1.6, contrast: 1400, brightness: -620, speed: -14, blur: 0, soft: 1.2, opacity: 55, evolve: 25, angle: 0, cover: 1.2},
     motes: {sw: 2.6, sh: 2.6, contrast: 1300, brightness: -600, speed: -40, blur: 0, soft: 2.4, opacity: 85, evolve: 35, angle: 0, cover: 1.2,
-            color: [1, 0.86, 0.58]}
+            color: [1, 0.86, 0.58]},
+    // 手前を横切る大きなぼけた埃 (神様のコレクション v1b): few, large, soft, faster than dust, so every cut has something drifting
+    bokeh: {sw: 7, sh: 7, contrast: 1300, brightness: -650, speed: -110, blur: 0, soft: 7, opacity: 80, evolve: 12, angle: 0, cover: 1.4,
+            color: [0.9, 0.92, 1]}
 };
 MV.rain = function (comp, o) {
     o = o || {};
