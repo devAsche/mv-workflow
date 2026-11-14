@@ -25,7 +25,8 @@
 //         (fit true: the whole picture sits small inside the window; false: the window looks onto the full-frame picture),
 //         inside: {img: cut-out PNG, h, pos, rim} (the picture shows only inside the silhouette),
 //         blend: "screen" | "add" | "multiply" | "overlay" | "soft_light" ... (a second picture laid over the first, in bgs),
-//         opacity: % | [[t, %]...], blur: px | [[t, px]...] (a rack focus)}
+//         opacity: % | [[t, %]...], blur: px | [[t, px]...] (a rack focus),
+//         wipe: {t, dur, angle, feather, from, to, ease} (Linear Wipe keyed from..to %: the layer is wiped away, e.g. a cloth falling)}
 // bgs:   [bg, ...] with tIn/tOut each, when one shot changes its background
 // shot:  also cut: cut-out PNG the same pixel size as bg.img (built with the bg's own framing, moves and effects except blur,
 //        so it sits exactly on the figure; lyrics with behind: true go between), cutDim: its dim (default the bg's), view: "face" | "eyes" | "hand" | "back" | "feet" | "item" |
@@ -57,7 +58,7 @@
 //        {drops: t | [t...], pos: [x, y] | [[x, y]...], area: [x0, y0, x1, y1], rings, size, color, squash, dur} (raindrop rings) |
 //        {box: t, pos, size: [w, h], color, opacity, dur, out, vertical, wipe} (a dark box under lyrics) |
 //        bars also take to: band height and at: [t0, t1] (the band narrows) |
-//        {rain: [t0, t1] | true, layer: "far" | "mid" | "near", speed, angle, sw, sh, contrast, brightness, blur, soft, color, opacity,
+//        {rain: [t0, t1] | true, layer: "far" | "mid" | "near" | "dust" | "motes" (specks drifting; motes are pale gold), speed, angle, sw, sh, contrast, brightness, blur, soft, color, opacity,
 //         evolve, seed} (drawn rain; near rain goes over the lyrics, far and mid under) |
 //        {light: [t0, t1], from: [x, y], to: [x, y], size: [w, h], angle, color, peak, blur, glow} (a light sliding past) |
 //        {splash: t | [t...], pos: [x, y] | [[x, y]...], n, r0, r1, width, color, dur, dir, spread, squash} (drops bursting) |
@@ -182,6 +183,12 @@
                 if (b.ghosts.t !== undefined) MV.keys(MV.tr(gc, "opacity"), [[T(b.ghosts.t), 0], [T(b.ghosts.t) + 0.1, (b.ghosts.opacity || 18) * Math.pow(0.7, gq - 1)],
                                                                          [T(b.ghosts.t) + (b.ghosts.dur || 0.8), 0]], "out");
             }
+        }
+        if (b.wipe) {                                         // a linear wipe that takes the layer away (a cloth sliding down off the case)
+            var we = MV.fx(L, "ADBE Linear Wipe", {"ADBE Linear Wipe-0002": b.wipe.angle === undefined ? 0 : b.wipe.angle,
+                                                    "ADBE Linear Wipe-0003": b.wipe.feather === undefined ? 160 : b.wipe.feather});
+            MV.keys(MV.findProp(we, "ADBE Linear Wipe-0001"), [[T(b.wipe.t), b.wipe.from || 0], [T(b.wipe.t) + (b.wipe.dur || 0.8), b.wipe.to === undefined ? 100 : b.wipe.to]],
+                    b.wipe.ease || "in");
         }
         if (b.strobe) MV.strobe(L, T(b.strobe[0]), T(b.strobe[1]), b.strobe[2] || 2);
         if (b.punch) MV.punch(L, T(b.punch.t), b.punch.big || 160, b.punch.dur || 0.3);

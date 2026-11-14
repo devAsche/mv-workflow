@@ -1340,7 +1340,11 @@ MV.write = function (comp, word, o) {
 MV.RAIN = {
     far:  {sw: 3,   sh: 90,  contrast: 600, brightness: -175, speed: 1300, blur: 10, soft: 0.6, opacity: 35, evolve: 260},
     mid:  {sw: 4.5, sh: 160, contrast: 600, brightness: -170, speed: 2200, blur: 18, soft: 0,   opacity: 45, evolve: 220},
-    near: {sw: 8,   sh: 300, contrast: 560, brightness: -185, speed: 3400, blur: 34, soft: 1.5, opacity: 35, evolve: 180}
+    near: {sw: 8,   sh: 300, contrast: 560, brightness: -185, speed: 3400, blur: 34, soft: 1.5, opacity: 35, evolve: 180},
+    // 埃・光の粒 (神様のコレクション): sparse round specks from the same noise, drifting slowly; speed < 0 rises, > 0 falls
+    dust: {sw: 1.6, sh: 1.6, contrast: 1400, brightness: -620, speed: -14, blur: 0, soft: 1.2, opacity: 55, evolve: 25, angle: 0, cover: 1.2},
+    motes: {sw: 2.6, sh: 2.6, contrast: 1300, brightness: -600, speed: -40, blur: 0, soft: 2.4, opacity: 85, evolve: 35, angle: 0, cover: 1.2,
+            color: [1, 0.86, 0.58]}
 };
 MV.rain = function (comp, o) {
     o = o || {};
