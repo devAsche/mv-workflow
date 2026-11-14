@@ -139,6 +139,7 @@ class Layer {
   moveBefore(o) { const L = this.containingComp._layers; L.splice(L.indexOf(this), 1); L.splice(L.indexOf(o), 0, this); }
   moveToEnd() { const L = this.containingComp._layers; L.splice(L.indexOf(this), 1); L.push(this); }
   remove() { const L = this.containingComp._layers; L.splice(L.indexOf(this), 1); }
+  setParentWithJump(p) { if (!p || !p.root) throw new Error('setParentWithJump: not a layer'); this.parent = p; }
   setTrackMatte(m, t) { this.trackMatte = m; }
 }
 class Comp {

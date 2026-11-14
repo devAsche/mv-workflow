@@ -185,7 +185,10 @@
     }
     for (i = 0; i < made.length; i++) {
         var M = made[i];
-        if (M[1].parent) { if (!BY[M[1].parent]) throw new Error("no parent " + M[1].parent); M[0].parent = BY[M[1].parent]; }
+        if (M[1].parent) {      // without the jump AE keeps the child where it was on screen and the child's values stop being parent-space
+            if (!BY[M[1].parent]) throw new Error("no parent " + M[1].parent);
+            M[0].setParentWithJump(BY[M[1].parent]);
+        }
         if (M[1].matte) {
             var ml = BY[M[1].matte.layer];
             if (!ml) throw new Error("no matte layer " + M[1].matte.layer);
