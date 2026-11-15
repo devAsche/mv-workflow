@@ -16,6 +16,7 @@
 //          solid: {color, w, h},
 //          shape: {groups: [{rings: [[[x, y]...]...], fill, stroke, sw, open, evenodd}], rect: {size, round}, ellipse: {size},
 //                  fill, stroke, sw, trim: {start: K, end: K, offset: K}, dash: [len, gap]},
+//          write: {word (hand.json entry), pos, h, width, color, times: [song time per char], durs | dur, drips, rough, taper},
 //          text: {str, font, size, fill, stroke, sw, tracking, hscale, vscale, vertical, justify: "left"|"center"|"right", leading,
 //                 anchor: "center" | "baseline"},
 //          image: {path, fit: [w, h]},
@@ -155,6 +156,12 @@
         else if (o.kind === "image") {
             L = comp.layers.add(MV.importFile(o.image.path));
             if (o.image.fit) { var s = Math.max(o.image.fit[0] / L.source.width, o.image.fit[1] / L.source.height) * 100; L.transform.scale.setValue([s, s]); }
+        }
+        else if (o.kind === "write") {      // 手書き: MV.write with a hand.json word; times are song times like t0 / t1
+            var X = o.write, tt = [];
+            for (var ti = 0; ti < X.times.length; ti++) tt.push(T(X.times[ti]));
+            L = MV.write(comp, X.word, {pos: X.pos, h: X.h, width: X.width, color: col(X.color) || [1, 1, 1], times: tt, durs: X.durs,
+                                        dur: X.dur, drips: X.drips, rough: X.rough, taper: X.taper}).layer;
         }
         else throw new Error("unknown layer kind " + o.kind);
         L.name = o.name || (o.kind + i);
