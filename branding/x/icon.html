@@ -5,8 +5,8 @@
  radial-gradient(260px 260px at 330px 60px,rgba(169,156,255,.45),transparent 70%),
  linear-gradient(140deg,#0a0e2a,#1b1f5c)}
 .ring{position:absolute;left:30px;top:30px;width:340px;height:340px;border-radius:50%;border:2.5px solid rgba(79,227,224,.6)}
-.wave{position:absolute;left:0;right:0;bottom:62px;height:120px;display:flex;align-items:flex-end;justify-content:center;gap:6px;opacity:.35}
-.wave i{display:block;width:6px;border-radius:3px;background:linear-gradient(#a99cff,#4fe3e0)}
+.wave{position:absolute;left:0;right:0;bottom:62px;height:120px;display:flex;align-items:flex-end;justify-content:center;gap:12px;opacity:.6}
+.wave i{display:block;width:14px;border-radius:7px;background:linear-gradient(#a99cff,#4fe3e0)}
 img{position:absolute;width:330px;left:48px;top:38px;filter:drop-shadow(0 12px 18px rgba(2,4,20,.55))}
 </style></head><body><div class="c"><div class="wave" id="w"></div><div class="ring"></div><img src="avatar_trim.png"></div>
-<script>const w=document.getElementById('w');for(let i=0;i<30;i++){const e=document.createElement('i');e.style.height=(15+Math.abs(Math.sin(i*.6))*90)+'px';w.appendChild(e)}</script></body></html>
+<script>const w=document.getElementById('w');[60,100,80,130,90,120,70,110,55,95].forEach((h,i)=>{const e=document.createElement("i");e.style.height=h+"px";e.style.background=i%2?"#a99cff":"#4fe3e0";w.appendChild(e)})</script></body></html>
