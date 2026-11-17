@@ -1,0 +1,54 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Zen+Kaku+Gothic+New:wght@500;700&family=JetBrains+Mono:wght@500&display=block" rel="stylesheet">
+<style>
+*{margin:0;box-sizing:border-box}
+body{width:1500px;height:500px;overflow:hidden;background:#0a0e2a}
+.c{position:relative;width:1500px;height:500px;overflow:hidden;
+ background:radial-gradient(600px 420px at 1210px 250px,rgba(79,227,224,.28),transparent 70%),
+ radial-gradient(700px 500px at 1000px 80px,rgba(160,150,255,.22),transparent 70%),
+ radial-gradient(500px 400px at 200px 0px,rgba(90,80,200,.25),transparent 70%),
+ linear-gradient(120deg,#070a22 0%,#121845 55%,#1b1f5c 100%)}
+.grid{position:absolute;inset:0;background-image:linear-gradient(rgba(140,160,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(140,160,255,.07) 1px,transparent 1px);background-size:50px 50px;
+ -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 30%,#000 70%,transparent 100%)}
+.streak{position:absolute;height:2px;background:linear-gradient(90deg,transparent,#4fe3e0,transparent);transform:rotate(-18deg);opacity:.55}
+.wave{position:absolute;left:1000px;top:120px;width:440px;height:260px;display:flex;align-items:center;gap:7px;opacity:.5}
+.wave i{display:block;width:5px;border-radius:3px;background:linear-gradient(#a99cff,#4fe3e0)}
+.ring{position:absolute;border-radius:50%;border:2px solid rgba(79,227,224,.55);box-shadow:0 0 30px rgba(79,227,224,.35),inset 0 0 30px rgba(79,227,224,.2)}
+.char{position:absolute;left:1040px;top:14px;height:500px;filter:drop-shadow(0 0 22px rgba(120,200,255,.45))}
+.txt{position:absolute;left:420px;top:118px;color:#eef1ff}
+.tag{font:500 17px 'JetBrains Mono';letter-spacing:.35em;color:#4fe3e0}
+.name{font:900 104px/1 'Orbitron';letter-spacing:.06em;margin:14px 0 10px;
+ background:linear-gradient(90deg,#ffffff 0%,#d8d3ff 55%,#7fe9ea 100%);-webkit-background-clip:text;color:transparent;
+ filter:drop-shadow(0 0 18px rgba(127,233,234,.35))}
+.jp{font:700 30px 'Zen Kaku Gothic New';letter-spacing:.14em;color:#e6e4ff}
+.jp b{color:#4fe3e0;font-weight:700}
+.tl{position:absolute;left:420px;top:392px;width:560px}
+.tl .bar{height:2px;background:rgba(180,190,255,.3);position:relative}
+.kf{position:absolute;top:-6px;width:12px;height:12px;transform:rotate(45deg);background:#a99cff;box-shadow:0 0 8px #a99cff}
+.kf.c2{background:#4fe3e0;box-shadow:0 0 8px #4fe3e0}
+.ph{position:absolute;top:-22px;width:2px;height:44px;background:#4fe3e0;box-shadow:0 0 10px #4fe3e0}
+.ph:before{content:"";position:absolute;top:-6px;left:-6px;border:7px solid transparent;border-top:9px solid #4fe3e0}
+.tc{font:500 13px 'JetBrains Mono';color:rgba(200,205,255,.6);margin-top:16px;letter-spacing:.2em;display:flex;justify-content:space-between}
+</style></head><body><div class="c">
+<div class="grid"></div>
+<div class="streak" style="left:780px;top:60px;width:420px"></div>
+<div class="streak" style="left:300px;top:470px;width:300px;opacity:.3"></div>
+<div class="streak" style="left:1250px;top:430px;width:260px;opacity:.35"></div>
+<div class="wave" id="w"></div>
+<div class="ring" style="left:1050px;top:40px;width:420px;height:420px"></div>
+<div class="ring" style="left:1110px;top:100px;width:300px;height:300px;opacity:.4;border-style:dashed"></div>
+<img class="char" src="avatar_trim.png">
+<div class="txt">
+ <div class="tag">AI × MOTION CREATOR</div>
+ <div class="name">ASHLEY</div>
+ <div class="jp"><b>AI</b>で動かす、映像とモーション。</div>
+</div>
+<div class="tl"><div class="bar">
+ <span class="kf" style="left:0"></span><span class="kf c2" style="left:120px"></span><span class="kf" style="left:210px"></span>
+ <span class="kf c2" style="left:350px"></span><span class="kf" style="left:470px"></span><span class="kf c2" style="left:548px"></span>
+ <span class="ph" style="left:290px"></span></div>
+ <div class="tc"><span>00:00:00</span><span>MV / MOTION GRAPHICS / SHORT</span><span>▶ REC</span></div></div>
+</div>
+<script>
+const w=document.getElementById('w');for(let i=0;i<36;i++){const h=20+Math.abs(Math.sin(i*0.55)*Math.cos(i*0.23))*200+ (i%3)*8;const e=document.createElement('i');e.style.height=h+'px';w.appendChild(e)}
+</script></body></html>

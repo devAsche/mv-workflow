@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{margin:0}body{width:400px;height:400px;overflow:hidden}
+.c{position:relative;width:400px;height:400px;overflow:hidden;
+ background:radial-gradient(220px 220px at 200px 190px,rgba(79,227,224,.45),transparent 72%),
+ radial-gradient(260px 260px at 330px 60px,rgba(169,156,255,.45),transparent 70%),
+ linear-gradient(140deg,#0a0e2a,#1b1f5c)}
+.ring{position:absolute;left:30px;top:30px;width:340px;height:340px;border-radius:50%;border:3px solid rgba(79,227,224,.7);box-shadow:0 0 24px rgba(79,227,224,.5)}
+.wave{position:absolute;left:0;right:0;bottom:62px;height:120px;display:flex;align-items:flex-end;justify-content:center;gap:6px;opacity:.35}
+.wave i{display:block;width:6px;border-radius:3px;background:linear-gradient(#a99cff,#4fe3e0)}
+img{position:absolute;width:330px;left:48px;top:38px;filter:drop-shadow(0 0 16px rgba(140,210,255,.55))}
+</style></head><body><div class="c"><div class="wave" id="w"></div><div class="ring"></div><img src="avatar_trim.png"></div>
+<script>const w=document.getElementById('w');for(let i=0;i<30;i++){const e=document.createElement('i');e.style.height=(15+Math.abs(Math.sin(i*.6))*90)+'px';w.appendChild(e)}</script></body></html>
