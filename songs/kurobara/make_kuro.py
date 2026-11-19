@@ -173,7 +173,7 @@ CUTS = [
  L(48, glyphs=[4, None], layout="center", sync="char", syncStyle="drop", scheme=3, emph=True, image=pic("p03", focus=[0.5, 0.5], cam={"zoom": 1.2})),
  L(49, layout="kanjiFocus", sync="char", syncStyle="drop", scheme=3),
  L(50, image=pic("p03", focus=[0.4, 0.5], cam={"zoom": -0.8}), layout="vcols", sync="char", syncStyle="drop", scheme=3),
- L(51, image=pic("j17", cam={"zoom": 0.8}), layout="vcols", sync="char", syncStyle="drop", scheme=3, emph=True, end=186.5),
+ L(51, image=pic("j17", cam={"zoom": 0.8}), layout="vcols", params={"variant": "split", "perCol": 6}, sync="char", syncStyle="drop", scheme=3, emph=True, end=186.5),
  # BR 3:06-3:29  spoken: the cracked mirror, written as she speaks
  {"sec": "BR"},
  L(52, layout="center", sync="char", syncStyle="blur", scheme=5, start=186.5),
@@ -182,7 +182,7 @@ CUTS = [
  L(55, layout="vcols", sync="char", syncStyle="blur", scheme=5),
  L(56, layout="vcols", sync="char", syncStyle="blur", scheme=5),
  L(57, image=pic("p10", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="center", sync="char", syncStyle="blur", scheme=5),
- L(58, layout="hzTornNote", sync="char", syncStyle="blur", scheme=5, emph=True),
+ L(58, layout="vcols", sync="char", syncStyle="blur", scheme=5, emph=True),
  L(59, image=pic("p08", focus=[0.5, 0.5], cam={"zoom": 0.6}), layout="quote", sync="char", syncStyle="blur", scheme=5),
  # FC 3:29-4:04  both are true; the world turns black
  {"sec": "FC"},
