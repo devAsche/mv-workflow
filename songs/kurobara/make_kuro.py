@@ -31,7 +31,7 @@ STYLE = {"name": "黒薔薇", "desc": "moonlit silver-lavender, black roses, a c
          "schemes": SCHEMES,
          "fonts": {"display": ["mincho_black"], "serif": ["shippori"], "body": ["mincho"], "mono": ["mono"]},
          "texture": {"grain": 0.55, "paper": 0.25, "scan": 0}, "ghost": 0.35,
-         "bias": {"layout": {"vcols": 2, "columnsBig": 1.6, "mixed": 1.4, "quote": 1.3, "kanjiFocus": 1.2},
+         "bias": {"layout": {"vcols": 2, "mixed": 1.4, "quote": 1.3, "kanjiFocus": 1.2},
                   "enter": {"blur": 1.6, "inkBleed": 1.6, "fadeStagger": 1.4}, "exit": {"drift": 1.4, "wzHanaChiru": 1.4}},
          "decor": {"petals": 0.8, "decoCorners": 0.7}, "hud": False}
 FONTS = {"mincho_black": ["ZenOldMincho-Black", "ZenOldMincho-Bold"], "shippori": ["ShipporiMinchoB1-Bold", "ShipporiMinchoB1-SemiBold"],
@@ -41,37 +41,42 @@ FONTS = {"mincho_black": ["ZenOldMincho-Black", "ZenOldMincho-Bold"], "shippori"
 
 # ---------------------------------------------------------------- part pools per phase (the pickers choose inside these)
 CALM = {
- "layout": ["vcols", "columnsBig", "mixed", "center", "quote", "kanjiFocus", "tyLineFocus", "dropCap", "justified", "tyRuby", "tyMargin", "frameBox", "footnote", "magazine"],
+ "layout": ["vcols", "mixed", "center", "quote", "kanjiFocus", "justified", "tyRuby"],
  "enter": ["blur", "fadeStagger", "blurStagger", "inkBleed", "brushReveal", "backlight", "glint", "trackIn", "riseMask", "tyRubyDrop", "xgFocusHunt", "tyDotGrow"],
  "exit": ["drift", "blur", "dissolve", "blurOutStagger", "wzHanaChiru", "echoOut", "hazeOut", "xjFocusPull", "xjStepFade"],
- "hold": ["breathe", "float", "shimmer", "glowFlicker", "focusRack", "xkFocusBreath", "drift", "trackBreathe"],
- "treat": ["none", "softShadow", "glow", "kerningWide", "fadeChars", "emphasisDots"],
+ "hold": ["breathe", "float", "shimmer", "glowFlicker", "focusRack", "xkFocusBreath", "drift"],
+ "treat": ["none", "softShadow", "glow", "fadeChars"],
  "cam": ["push", "pullOut", "driftDiag", "floatNoise", "focusIn", "xqDriftTurn", "xqCraneUp", "tzMeasureZoom", "dollyIn"],
- "trans": ["xqSoftSweep", "xqLightLeak", "uncover", "inkBlob"],
- "decor": ["petals", "decoCorners", "xlDoubleRule", "tyRunningHead", "moonPhases", "lightLeak", "risingParticles", "kasumi", "watermarkKanji", "vines", "tzNoteMark", "xlSlur", "constellation"],
+ "trans": ["xqSoftSweep", "uncover", "inkBlob"],
+ "decor": ["petals", "decoCorners", "tyRunningHead", "risingParticles", "kasumi", "watermarkKanji", "vines"],
  "bg": ["none", "nightMoon", "vignettePulse", "godRays", "marble", "spotlight"],
+ "fx": ["chroma", "shake", "zoom", "flash", "bloomFlash", "defocus", "dustScratches", "xrExposureDip", "xrBlink", "heartbeat", "wzHanafubuki", "ripple", "echoFrames"],
 }
 COLD = copy.deepcopy(CALM)
 COLD.update({
- "layout": ["vcols", "mixed", "stack", "condensed", "tyKeySplit", "hrRedacted", "tyLineFocus", "columnsBig", "quote", "hzTornNote", "kanjiFocus"],
+ "layout": ["vcols", "mixed", "stack", "condensed", "quote", "kanjiFocus"],
  "enter": ["slice", "blur", "scramble", "inkBleed", "printRegister", "xgDoubleVision", "hzShakyHand", "trackIn", "xeRedact", "flicker"],
  "exit": ["glitch", "drift", "tyStrike", "xiRedact", "scribbleOut", "xjDoubleVision", "blurOutStagger", "burn"],
  "hold": ["noiseDrift", "xkDoubleVision", "shadowSway", "breathe", "hrLagOne", "echoTrail"],
  "treat": ["none", "strike", "hrRedact", "echoOutline", "boxed", "toneShadow", "hzColdRim"],
- "decor": ["crossOut", "decoCorners", "vines", "petals", "tyRunningHead", "hrDrips", "smoke", "watermarkKanji"],
+ "decor": ["decoCorners", "vines", "petals", "tyRunningHead", "hrDrips", "smoke", "watermarkKanji"],
  "trans": ["xqSoftSweep", "sliceShift", "hrBlink", "inkBlob"],
  "bg": ["none", "vignettePulse", "spotlight", "filmStrip"],
+ "fx": ["chroma", "shake", "zoom", "defocus", "dustScratches", "xrExposureDip", "xrBlink", "heartbeat", "echoFrames",
+        "slice", "rgbSplit", "interlace", "hzDrain", "hzColdBreath", "xrLampFlicker", "blackFrame", "trackingNoise"],
 })
 HATE = copy.deepcopy(COLD)
 HATE.update({
- "layout": ["stack", "mixed", "condensed", "kanjiFocus", "zoomRepeat", "tyKeySplit", "vcols", "depthStack", "center"],
+ "layout": ["stack", "mixed", "condensed", "kanjiFocus", "vcols", "center"],
  "enter": ["slice", "scramble", "echoIn", "inkBleed", "hrManifest", "xgAfterimage", "printRegister", "assemble"],
  "exit": ["glitch", "burn", "scorchOut", "hrDrain", "wzHanaChiru", "slashOut", "tyStrike", "explode"],
  "hold": ["heartbeat", "noiseDrift", "echoTrail", "xkDoubleVision", "hrTwitch", "xkLoudWeight"],
  "treat": ["none", "hrInkBleed", "echoOutline", "strike", "glow", "outlineOffset", "hrEroded"],
- "decor": ["hrCracks", "hrDrips", "petals", "vines", "decoCorners", "crossOut", "lightLeak"],
+ "decor": ["hrCracks", "hrDrips", "petals", "vines", "decoCorners"],
  "trans": ["sliceShift", "hrBlink", "inkBlob", "flashCross"],
  "cam": ["push", "pullOut", "driftDiag", "dutch", "xqHeartbeat", "handheld", "dollyIn", "xqWindUp"],
+ "fx": ["chroma", "shake", "zoom", "flash", "slice", "block", "rgbSplit", "interlace", "hzDrain", "blackFrame", "trackingNoise", "heartbeat",
+        "shatter", "hzTear", "strobe", "xrDropout", "wzSumiShibuki", "hzClosingDark", "invert"],
 })
 SPOKEN = copy.deepcopy(CALM)
 SPOKEN.update({
@@ -84,6 +89,7 @@ SPOKEN.update({
  "trans": ["xqSoftSweep", "hrBlink"],
  "cam": ["push", "pullOut", "floatNoise", "hzHeldBreath", "focusIn"],
  "bg": ["none", "spotlight", "vignettePulse"],
+ "fx": ["chroma", "shake", "defocus", "dustScratches", "xrExposureDip", "xrBlink", "hzFaint", "heartbeat"],
 })
 FX_CALM = {"motion": 0.35, "glitch": 0.04, "chroma": 0.12, "decor": 0.45, "texture": 0.6, "bgSwitch": 0, "flash": False, "hud": False}
 FX_COLD = {"motion": 0.45, "glitch": 0.18, "chroma": 0.35, "decor": 0.5, "texture": 0.6, "bgSwitch": 0, "flash": False, "hud": False}
@@ -100,7 +106,7 @@ CUTS = [
  {"sec": "INTRO", "kind": "interlude", "image": pic("p01", focus=[0.5, 0.45], cam={"zoom": 0.6}), "scheme": 0, "params": {"variant": "quiet", "showTitle": False}},
  L(0, image=pic("p01", focus=[0.5, 0.5], cam={"zoom": 0.75}), layout="vcols", enter="inkBleed", exit="drift", scheme=0),
  L(1, image=pic("p01", focus=[0.45, 0.6], cam={"zoom": -0.6}), layout="vcols", enter="blurStagger", exit="drift", scheme=0),
- L(2, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.6}), layout="columnsBig", enter="blur", exit="wzHanaChiru", scheme=0),
+ L(2, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.6}), layout="kanjiFocus", enter="blur", exit="wzHanaChiru", scheme=0),
  L(3, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.9}), layout="center", enter="fadeStagger", exit="blur", scheme=0, end=29.9),
  {"kind": "title", "start": 29.9, "end": 39.6, "text": "黒薔薇ノ契リ", "layout": "vcols", "params": {"variant": "repeat", "cols": 1}, "image": pic("j17", cam={"zoom": 0.5, "pan": [-10, 0]}), "enter": "inkBleed", "exit": "blur", "scheme": 0},
  # V1 0:40-1:09  moonlight, the room, one rose, the letter, the thorn
@@ -108,20 +114,20 @@ CUTS = [
  L(4, image=pic("p02", focus=[0.62, 0.42]), layout="vcols", scheme=0, start=39.6),
  L(5, image=pic("p02", focus=[0.62, 0.42], cam={"zoom": 0.5, "pan": [-14, 0]}), layout="mixed", scheme=0),
  L(6, image=pic("p04", focus=[0.5, 0.5]), layout="kanjiFocus", scheme=0),
- L(7, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": -0.6}), layout="dropCap", scheme=0, emph=True),
+ L(7, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": -0.6}), layout="center", scheme=0, emph=True),
  L(8, layout="quote", scheme=1),
  L(9, image=pic("p06", focus=[0.5, 0.55]), layout="tyRuby", scheme=0),
  L(10, image=pic("p06", focus=[0.5, 0.55], cam={"zoom": 0.6}), layout="vcols", scheme=0),
  L(11, layout="justified", scheme=1),
- L(12, image=pic("p05", focus=[0.5, 0.5]), layout="columnsBig", scheme=0),
- L(13, image=pic("p05", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="mixed", scheme=0),
- L(14, image=pic("p02", focus=[0.62, 0.42], cam={"zoom": -0.5}), layout="tyLineFocus", scheme=0),
+ L(12, image=pic("p05", focus=[0.5, 0.5]), layout="vcols", scheme=0),
+ L(13, image=pic("p05", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="quote", scheme=0),
+ L(14, image=pic("p02", focus=[0.62, 0.42], cam={"zoom": -0.5}), layout="center", scheme=0),
  L(15, image=pic("p02", focus=[0.62, 0.42], cam={"zoom": 0.7}), layout="vcols", scheme=0),
  # P1 1:09-1:29  the pact: the sealed letter, then two shadows
  {"sec": "P1"},
  L(16, image=pic("p06", focus=[0.5, 0.5], cam={"zoom": 0.5}), layout="vcols", enter="inkBleed", scheme=0),
- L(17, image=pic("p06", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="columnsBig", enter="brushReveal", scheme=0),
- L(18, image=pic("p07", focus=[0.5, 0.5]), layout="quote", scheme=0),
+ L(17, image=pic("p06", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="quote", enter="brushReveal", scheme=0),
+ L(18, image=pic("p07", focus=[0.5, 0.5]), layout="mixed", scheme=0),
  L(19, image=pic("p07", focus=[0.5, 0.5], cam={"zoom": 0.9}), layout="center", enter="backlight", scheme=0, emph=True),
  # C1 1:29-1:53  文字PV: every glyph on its own sung time
  {"sec": "C1"},
@@ -134,7 +140,7 @@ CUTS = [
  L(24, glyphs=[4, None], layout="vcols", params={"variant": "repeat", "cols": 1}, sync="char", syncStyle="blur", scheme=0, emph=True, image=pic("j17", cam={"zoom": 1.0})),
  L(25, layout="tyLineFocus", sync="char", syncStyle="blur", scheme=0),
  L(26, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": -0.7}), layout="vcols", sync="char", syncStyle="blur", scheme=0),
- L(27, layout="columnsBig", sync="char", syncStyle="blur", scheme=0, emph=True, end=110.4),
+ L(27, layout="vcols", sync="char", syncStyle="blur", scheme=0, emph=True, end=110.4),
  {"kind": "interlude", "start": 110.4, "image": pic("p01", focus=[0.5, 0.5], cam={"zoom": 0.6}), "scheme": 0, "params": {"variant": "quiet", "showTitle": False}},
  # V2 1:53-2:23  someone else; the photo painted over
  {"sec": "V2"},
@@ -143,17 +149,17 @@ CUTS = [
  L(30, layout="tyLineFocus", scheme=2),
  L(31, layout="stack", scheme=2, emph=True),
  L(32, image=pic("p05", focus=[0.5, 0.5], cam={"zoom": -0.5}), layout="vcols", scheme=2),
- L(33, image=pic("p05", focus=[0.5, 0.5], cam={"zoom": 0.7}), layout="columnsBig", scheme=2),
+ L(33, image=pic("p05", focus=[0.5, 0.5], cam={"zoom": 0.7}), layout="center", scheme=2),
  L(34, layout="quote", scheme=2),
  L(35, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="kanjiFocus", scheme=2, emph=True, treat="hzColdRim"),
  L(36, image=pic("p08", focus=[0.5, 0.5]), layout="mixed", treat="strike", decor=[{"id": "crossOut"}], scheme=2),
  L(37, image=pic("p08", focus=[0.5, 0.5], cam={"zoom": 0.9}), layout="vcols", scheme=2),
  L(38, layout="condensed", scheme=2),
- L(39, image=pic("p05", focus=[0.5, 0.45], cam={"zoom": 1.0}), layout="tyKeySplit", scheme=2, emph=True),
+ L(39, image=pic("p05", focus=[0.5, 0.45], cam={"zoom": 1.0}), layout="vcols", scheme=2, emph=True),
  # P2 2:23-2:43  the prayer
  {"sec": "P2"},
  L(40, image=pic("p09", focus=[0.5, 0.5], cam={"zoom": 0.5}), layout="vcols", enter="inkBleed", scheme=2),
- L(41, image=pic("p09", focus=[0.5, 0.5], cam={"zoom": 0.7, "pan": [-12, 0]}), layout="columnsBig", scheme=2),
+ L(41, image=pic("p09", focus=[0.5, 0.5], cam={"zoom": 0.7, "pan": [-12, 0]}), layout="kanjiFocus", scheme=2),
  L(42, layout="quote", scheme=5),
  L(43, image=pic("p09", focus=[0.5, 0.4], cam={"zoom": 1.1}), layout="center", enter="echoIn", scheme=2, emph=True),
  # C2 2:43-3:07  hate: crimson, the room overgrown
@@ -161,13 +167,13 @@ CUTS = [
  L(44, glyphs=[0, 4], layout="center", sync="char", syncStyle="drop", treat="strike", scheme=3, emph=True, impact=True, image=pic("p03", focus=[0.5, 0.45], cam={"zoom": 0.9})),
  L(44, glyphs=[4, None], layout="center", sync="char", syncStyle="drop", treat="strike", scheme=3, emph=True, image=pic("p03", focus=[0.5, 0.45], cam={"zoom": 1.2})),
  L(45, layout="mixed", sync="char", syncStyle="drop", scheme=3),
- L(46, image=pic("p10", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="columnsBig", sync="char", syncStyle="drop", scheme=3),
+ L(46, image=pic("p10", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="condensed", sync="char", syncStyle="drop", scheme=3),
  L(47, layout="stack", sync="char", syncStyle="drop", scheme=3),
  L(48, glyphs=[0, 4], layout="center", sync="char", syncStyle="drop", scheme=4, emph=True, impact=True),
  L(48, glyphs=[4, None], layout="center", sync="char", syncStyle="drop", scheme=3, emph=True, image=pic("p03", focus=[0.5, 0.5], cam={"zoom": 1.2})),
  L(49, layout="kanjiFocus", sync="char", syncStyle="drop", scheme=3),
  L(50, image=pic("p03", focus=[0.4, 0.5], cam={"zoom": -0.8}), layout="vcols", sync="char", syncStyle="drop", scheme=3),
- L(51, image=pic("j17", cam={"zoom": 0.8}), layout="columnsBig", sync="char", syncStyle="drop", scheme=3, emph=True, end=186.5),
+ L(51, image=pic("j17", cam={"zoom": 0.8}), layout="vcols", sync="char", syncStyle="drop", scheme=3, emph=True, end=186.5),
  # BR 3:06-3:29  spoken: the cracked mirror, written as she speaks
  {"sec": "BR"},
  L(52, layout="center", sync="char", syncStyle="blur", scheme=5, start=186.5),
@@ -188,7 +194,7 @@ CUTS = [
  L(64, glyphs=[0, 4], layout="center", sync="char", syncStyle="blur", scheme=3, emph=True),
  L(64, glyphs=[4, None], layout="center", sync="char", syncStyle="drop", scheme=4, emph=True),
  L(65, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 1.0}), layout="stack", sync="char", syncStyle="drop", scheme=3),
- L(66, image=pic("p03", focus=[0.5, 0.5], cam={"zoom": -0.9}), layout="columnsBig", sync="char", syncStyle="drop", scheme=3, emph=True, impact=True),
+ L(66, image=pic("p03", focus=[0.5, 0.5], cam={"zoom": -0.9}), layout="vcols", sync="char", syncStyle="drop", scheme=3, emph=True, impact=True),
  L(67, layout="kanjiFocus", sync="char", syncStyle="drop", scheme=4),
  L(68, glyphs=[0, 4], layout="vcols", params={"variant": "repeat", "cols": 1}, sync="char", syncStyle="blur", scheme=0, emph=True, image=pic("j18", cam={"zoom": -0.6})),
  L(68, glyphs=[4, None], layout="center", sync="char", syncStyle="blur", scheme=3, emph=True),
@@ -242,6 +248,9 @@ def section_specs(seed=19):
         sc = []
         for c in cs:
             c = copy.deepcopy(c)
+            if c.get('layout') == 'vcols' and 'params' not in c and c.get('text'):
+                n = len(''.join(c['text'].split()))
+                c['params'] = {"variant": "repeat", "cols": 1} if n <= 7 else {"variant": "split"}
             c['start'] = round(c['start'] - t0, 3); c['end'] = round(c['end'] - t0, 3)
             if 'chars' in c: c['chars'] = [round(x - t0, 3) for x in c['chars']]
             if 'readBy' in c: c['readBy'] = round(c['readBy'] - t0, 3)

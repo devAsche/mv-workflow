@@ -14,7 +14,7 @@
 //   * a "kit": decor parts with fixed parameters repeated on every cut (one look across the song).
 // Spec format: see pc/autopilot/mv/ae/jz/README.md.
 
-var MVJZ_VERSION = '0.1.1';
+var MVJZ_VERSION = '0.1.4';
 var MVJZ_IMG = {};
 
 function mvJzIsArr(o) { return Object.prototype.toString.call(o) === '[object Array]'; }
@@ -145,6 +145,7 @@ function mvJzWithKit(decor, kit) {
 function mvJzPlan(spec) {
     if (!spec || !spec.cuts || !spec.cuts.length) throw new Error('MVJZ: the spec has no cuts');
     MVJZ_PLANLOG = [];
+    mvJzSetBreaks(spec.cuts);
     mvJzFonts(spec.fontCandidates);
     var W = spec.width || 1920, H = spec.height || 1080, fps = spec.fps || 24, seed = spec.seed || 1;
     var st = mvJzStyle(spec), en = mvJzEnabled(spec);
@@ -368,6 +369,90 @@ jzReg('enter', 'mvSync', { selfHide: true, apply: function (m) {
     else if (sty === 'rise') jzAnimator(m.L, 'MV Sync Rise', [['ADBE Text Position 3D', [0, 0.3 * sz, 0]]], core + '(1-oe(x))*100');
     else if (sty === 'blur') jzAnimator(m.L, 'MV Sync Blur', [['ADBE Text Blur', [14, 14]]], core + '(1-oc(x))*100');
 } });
+
+// ---------------------------------------------------------------- line breaks on phrase boundaries
+// A cut may carry "breaks": indices of the non-space glyphs of its text where a new line may start (phrase boundaries;
+// tools/jz_spec.py makes them with BudouX). JIZURA breaks a line by kana / kanji changes and cuts vertical columns by
+// count, which can split a word (kaori -> ka / ori) or leave one glyph alone in a column; with the hints a break falls
+// on a phrase boundary whenever one fits. Texts without hints break as JIZURA does.
+var MVJZ_BREAKS = {};
+function mvJzSetBreaks(cuts) {
+    MVJZ_BREAKS = {};
+    for (var i = 0; i < cuts.length; i++) {
+        var c = cuts[i];
+        if (c && c.text && c.breaks && c.breaks.length) MVJZ_BREAKS['k' + mvJzCompact(c.text)] = c.breaks;
+    }
+}
+function mvJzBreaksOf(text) { var k = 'k' + mvJzCompact(text); return MVJZ_BREAKS.hasOwnProperty(k) ? MVJZ_BREAKS[k] : null; }
+// text -> lines: about nWant lines (one fewer or one more when that keeps the breaks on phrase boundaries), as even as
+// can be, longer than maxPer only when that saves a break inside a phrase (the layouts fit the text to their box), no
+// line starting with a small kana / closing mark
+function mvJzHintLines(text, maxPer, hints, nWant) {
+    var arr = jzChars(text), n = arr.length, fi = [], ok = {}, cand = [], k, i, f = 0;
+    for (k = 0; k <= n; k++) { fi.push(f); if (k < n && !/[\s\u3000\r\n]/.test(arr[k])) f++; }
+    for (i = 0; i < hints.length; i++) ok['p' + hints[i]] = true;
+    for (k = 1; k < n; k++) {
+        if (/[\s\u3000\r\n]/.test(arr[k])) continue;
+        cand.push({ k: k, good: ok['p' + fi[k]] === true || /[\s\u3000]/.test(arr[k - 1]),
+            bad: jzIsNoStart(arr, k) || '\u3063\u3083\u3085\u3087\u3041\u3043\u3045\u3047\u3049\u30c3\u30e3\u30e5\u30e7\u30fc\u3001\u3002\u2026'.indexOf(arr[k]) >= 0 });
+    }
+    function solve(nL) {
+        var ideal = f / nL, memo = {};
+        function lineCost(g) { var ov = Math.max(0, g - maxPer); return (g - ideal) * (g - ideal) + ov * ov * 8; }
+        function best(s, l) {
+            if (l === 1) return { c: lineCost(fi[n] - fi[s]), cuts: [] };
+            var key = s + '_' + l;
+            if (memo[key]) return memo[key];
+            var r = { c: 1e12, cuts: [] };
+            for (var j = 0; j < cand.length; j++) {
+                var cd = cand[j], g = fi[cd.k] - fi[s];
+                if (cd.k <= s || g < 1) continue;
+                var sub = best(cd.k, l - 1), cost = lineCost(g) + (cd.good ? 0 : 80) + (cd.bad ? 400 : 0) + sub.c;
+                if (cost < r.c) r = { c: cost, cuts: [cd.k].concat(sub.cuts) };
+            }
+            memo[key] = r;
+            return r;
+        }
+        return best(0, nL);
+    }
+    var nL = Math.max(1, Math.min(nWant, f)), r = solve(nL), d, r2;
+    for (d = -1; d <= 1; d += 2) {
+        if (nL + d < 1 || nL + d > f) continue;
+        r2 = solve(nL + d); r2.c += 6;
+        if (r2.c < r.c) r = r2;
+    }
+    var cuts = [0].concat(r.cuts).concat([n]), out = [];
+    for (i = 0; i < cuts.length - 1; i++) out.push(jzTrim(arr.slice(cuts[i], cuts[i + 1]).join('')));
+    return out;
+}
+var mvJzSplit0 = jzSplitLines;
+jzSplitLines = function (text, maxPer) {
+    var h = text ? mvJzBreaksOf(text) : null;
+    if (!h || jzIsLatinText(text)) return mvJzSplit0(text, maxPer);
+    var n = jzChars(text).length;
+    if (n <= maxPer) return text;
+    return mvJzHintLines(text, maxPer, h, Math.ceil(n / maxPer)).join('\r');
+};
+// vertical columns ("split" variant) on phrase boundaries, sized by the longest column
+var mvJzVcols0 = JZ_REG.layout.vcols.build;
+JZ_REG.layout.vcols.build = function (ctx) {
+    var W = ctx.W, H = ctx.H, sc = ctx.sc, c = ctx.cut, text = c.text.replace(/[\s\u3000]+/g, ''), n = jzCount(text), h = mvJzBreaksOf(c.text);
+    var variant = jzP(ctx, 'variant', n <= 5 ? 'repeat' : 'split');
+    if (!h || (variant === 'repeat' && n <= 9)) return mvJzVcols0(ctx);
+    var font = jzFontOf(ctx, 'font', 'serif'), bb = null, i, mx = 1;
+    var perCol = Math.max(2, Math.min(jzP(ctx, 'perCol', 4) + 1, Math.ceil(n / Math.ceil(n / 7))));
+    var colsA = n <= perCol ? [text] : mvJzHintLines(text, perCol, h, Math.ceil(n / perCol));
+    for (i = 0; i < colsA.length; i++) mx = Math.max(mx, jzCount(colsA[i]));
+    var sz = Math.min(H * 0.74 / (mx * 1.03), W * 0.8 / (colsA.length * 1.4)), top = H / 2 - mx * sz * 1.03 / 2;
+    for (i = 0; i < colsA.length; i++) {
+        var x = W / 2 + ((colsA.length - 1) / 2 - i) * sz * 1.4;
+        var cL = jzText(ctx, jzVertical(colsA[i]), { font: font, size: sz, color: sc.fg, x: x, y: 0, leading: sz * 1.03 });
+        var hh = jzSize(cL)[1]; jzXf(cL, 'ADBE Position').setValue([x, top + hh / 2]);
+        jzAnimate(ctx, cL, { size: sz, mi: i * 3 });
+        bb = jzUnion(bb, jzBB(cL));
+    }
+    return bb;
+};
 
 // ---------------------------------------------------------------- after the build: illustrations under the lyric
 function mvJzImport(path) {

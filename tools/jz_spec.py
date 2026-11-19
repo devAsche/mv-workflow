@@ -28,10 +28,52 @@ after the previous line ends and at the latest 0.34 s before the next line start
 Lines shown glyph by glyph (sync "char") switch later: lead + 0.1 s before the next first glyph, and not before the last
 glyph has been readable 0.25 s; MVJZ then shortens the exit and shows a glyph sung too close to the switch earlier.
 Explicit "start" / "end" on a cut win over the computed ones. All times in the spec are song time minus offset.
+
+Line breaks: every lyric cut gets "breaks", the glyph indices (non-space glyphs of its text) where a new line may start:
+phrase boundaries from BudouX (github.com/google/budoux, Apache-2.0; pip install budoux) and the glyph after a space,
+never inside a run of kanji. MVJZ breaks lines and vertical columns only there when it can ("phrase_breaks": false in
+cuts.json turns this off; without BudouX only the spaces count).
 """
 import argparse, json, sys
 
 SPACE = set(' \u3000\t')
+_PARSER = []
+
+
+def _budoux():
+    if not _PARSER:
+        try:
+            import budoux
+            _PARSER.append(budoux.load_default_japanese_parser())
+        except ImportError:
+            print('NOTE budoux is not installed: line breaks only after spaces', file=sys.stderr)
+            _PARSER.append(None)
+    return _PARSER[0]
+
+
+def _kanji(ch):
+    return '\u4e00' <= ch <= '\u9fff' or '\u3400' <= ch <= '\u4dbf' or ch in '々〆ヶ'
+
+
+def phrase_breaks(text):
+    """glyph indices (non-space glyphs of text) where a new line may start"""
+    flat, after_space, sp = [], set(), False
+    for ch in text:
+        if ch in SPACE:
+            sp = True
+            continue
+        if sp and flat:
+            after_space.add(len(flat))
+        sp = False
+        flat.append(ch)
+    out = set(after_space)
+    parser = _budoux()
+    if parser is not None and flat:
+        k = 0
+        for ph in parser.parse(''.join(flat))[:-1]:
+            k += len(ph)
+            out.add(k)
+    return sorted(k for k in out if 0 < k < len(flat) and (k in after_space or not (_kanji(flat[k - 1]) and _kanji(flat[k]))))
 
 
 def line_glyphs(line):
@@ -128,6 +170,8 @@ def make(cfg):
             for k, v in defaults.items():
                 c.setdefault(k, v)
             c['text'] = r['text']
+            if cfg.get('phrase_breaks', True) and 'breaks' not in c:
+                c['breaks'] = phrase_breaks(r['text'])
             c['chars'] = [round(t - off, 3) for t in r['chars']]
             c['readBy'] = round(r['s'] - lead - off, 3)
             if r['start'] > r['s'] - lead:
