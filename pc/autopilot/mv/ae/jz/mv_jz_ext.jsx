@@ -168,7 +168,8 @@ function mvJzPlan(spec) {
         var scheme = sc.scheme != null ? sc.scheme % nS : schemeIdx;
         var c;
         if (kind === 'title' || kind === 'interlude') {
-            var lay = kind === 'title' ? 'title' : 'interlude';
+            // a title may take a lyric layout (e.g. "vcols" to keep it beside a face); otherwise JIZURA's centred title card
+            var lay = kind === 'title' ? (sc.layout && jzHas('layout', sc.layout) && sc.layout !== 'interlude' ? sc.layout : 'title') : 'interlude';
             c = { index: 0, text: kind === 'title' ? (text || plan.title) : (text || plan.title || ''), lineText: '', note: sc.note != null ? sc.note : plan.artist, line: -1,
                 start: start, end: end, dur: dur, layout: lay, enter: mvJzCheck('enter', sc.enter || 'blur', 'blur'), exit: mvJzCheck('exit', sc.exit || 'blur', 'blur'), hold: 'still',
                 inDur: sc.inDur != null ? sc.inDur : 0.3, outDur: sc.outDur != null ? sc.outDur : 0.3,
@@ -232,7 +233,7 @@ function mvJzPlan(spec) {
                 if (ct) { c.mvSync = sc.sync === 'char' ? 'char' : 'word'; c.mvCharT = ct.compact; c.mvSyncStyle = sc.syncStyle || 'fade'; c.mvSyncDur = sc.syncDur || 0.12;
                           c.mvLead = sc.lead != null ? sc.lead : (spec.lead != null ? spec.lead : 0.06);
                           mvJzKeepWhole(c, sc, spec); }
-            }
+            } else if (sc.chars && spec.keepWhole !== false) mvJzWholeScreen(c, sc, spec, mvJzCharTimes(text, sc.chars, start));
             if (spec.autoEvents !== false) mvJzAutoEvents(plan, c, rng, st, en, fx, fxHist, emph, line !== prevLine && !!sc.impact);
         }
         c.mvImage = sc.image || null;
@@ -275,6 +276,20 @@ function mvJzKeepWhole(c, sc, spec) {
     }
     for (k = 1; k < n; k++) if (T[k] < T[k - 1]) T[k] = T[k - 1];
     if (moved) MVJZ_PLANLOG.push('cut at ' + jzN(c.start) + ': ' + moved + ' glyph(s) shown early to stay readable');
+}
+// a line shown as one screen (no sync): every glyph is in by readBy (the per-glyph / per-layer stagger is squeezed into
+// the time before the voice; mv-rules-general "the whole screen at once"), and the exit waits until the last glyph is sung
+function mvJzWholeScreen(c, sc, spec, ct) {
+    if (!ct) return;
+    var T = ct.compact, n = T.length, k;
+    if (sc.readBy != null && sc.stagger == null && c.enter !== 'cut') {
+        var avail = (+sc.readBy - c.start) - (c.inDur || 0);
+        c.stagger = jzClamp(avail / (n + 6), 0.004, c.stagger || 0.04);
+    }
+    var room = c.dur - (T[n - 1] + (spec.wholeHold != null ? spec.wholeHold : 0.1));
+    if (sc.outDur == null && c.exit !== 'cut' && c.outDur > room) {
+        if (room >= 0.15) c.outDur = room; else { c.exit = 'cut'; c.outDur = 0; }
+    }
 }
 // the per-cut effect events of JIZURA's planner (15_plan.jsx), for cuts we place ourselves
 function mvJzAutoEvents(plan, c, rng, st, en, fx, fxHist, emph, impactStart) {

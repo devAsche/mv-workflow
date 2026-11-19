@@ -34,7 +34,7 @@ STYLE = {"name": "黒薔薇", "desc": "moonlit silver-lavender, black roses, a c
          "bias": {"layout": {"vcols": 2, "columnsBig": 1.6, "mixed": 1.4, "quote": 1.3, "kanjiFocus": 1.2},
                   "enter": {"blur": 1.6, "inkBleed": 1.6, "fadeStagger": 1.4}, "exit": {"drift": 1.4, "wzHanaChiru": 1.4}},
          "decor": {"petals": 0.8, "decoCorners": 0.7}, "hud": False}
-FONTS = {"mincho_black": ["ZenOldMincho-Black", "ZenOldMincho-Bold"], "shippori": ["ShipporiMinchoB1-ExtraBold", "ShipporiMinchoB1-Bold"],
+FONTS = {"mincho_black": ["ZenOldMincho-Black", "ZenOldMincho-Bold"], "shippori": ["ShipporiMinchoB1-Bold", "ShipporiMinchoB1-SemiBold"],
          "mincho": ["ZenOldMincho-SemiBold", "ZenOldMincho-Medium", "ShipporiMinchoB1-Medium"], "mincho_bold": ["ZenOldMincho-Bold"],
          "mincho_light": ["ZenOldMincho-Regular", "ShipporiMinchoB1-Regular"], "mono": ["Cinzel-Regular", "Cinzel"],
          "gothic_med": ["ShipporiMinchoB1-Medium"], "gothic_bold": ["ShipporiMinchoB1-Bold"], "gothic_black": ["ZenOldMincho-Black"]}
@@ -102,7 +102,7 @@ CUTS = [
  L(1, image=pic("p01", focus=[0.45, 0.6], cam={"zoom": -0.6}), layout="vcols", enter="blurStagger", exit="drift", scheme=0),
  L(2, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.6}), layout="columnsBig", enter="blur", exit="wzHanaChiru", scheme=0),
  L(3, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.9}), layout="center", enter="fadeStagger", exit="blur", scheme=0, end=29.9),
- {"kind": "title", "start": 29.9, "end": 39.6, "image": pic("j16", focus=[0.62, 0.45], cam={"zoom": 0.5, "pan": [-10, 0]}), "enter": "inkBleed", "exit": "blur", "scheme": 0},
+ {"kind": "title", "start": 29.9, "end": 39.6, "text": "黒薔薇ノ契リ", "layout": "vcols", "params": {"variant": "repeat", "cols": 1}, "image": pic("j17", cam={"zoom": 0.5, "pan": [-10, 0]}), "enter": "inkBleed", "exit": "blur", "scheme": 0},
  # V1 0:40-1:09  moonlight, the room, one rose, the letter, the thorn
  {"sec": "V1"},
  L(4, image=pic("p02", focus=[0.62, 0.42]), layout="vcols", scheme=0, start=39.6),
@@ -201,10 +201,11 @@ CUTS = [
  L(73, layout="center", enter="blur", exit="drift", scheme=5),
  L(74, layout="center", enter="blur", exit="drift", scheme=5),
  L(75, layout="kanjiFocus", sync="char", syncStyle="blur", scheme=3, emph=True, end=259.6),
- {"kind": "title", "start": 259.6, "end": 264.8, "image": pic("j16", focus=[0.62, 0.45], cam={"zoom": -0.4}), "enter": "blur", "exit": "blur", "scheme": 3},
+ {"kind": "title", "start": 259.6, "end": 264.8, "text": "黒薔薇ノ契リ", "layout": "vcols", "params": {"variant": "repeat", "cols": 1}, "image": pic("j18", cam={"zoom": -0.4}), "enter": "blur", "exit": "blur", "scheme": 3},
 ]
 PHASE = {"INTRO": (CALM, FX_CALM), "V1": (CALM, FX_CALM), "P1": (CALM, FX_CALM), "C1": (CALM, FX_CALM), "V2": (COLD, FX_COLD),
          "P2": (COLD, FX_COLD), "C2": (HATE, FX_HATE), "BR": (SPOKEN, FX_SPOKEN), "FC": (HATE, FX_HATE), "OUT": (SPOKEN, FX_SPOKEN)}
+GHOST = {"INTRO": 0, "V1": 0, "P1": 0, "C1": 0, "V2": 0.35, "P2": 0.35, "C2": 0.35, "BR": 0, "FC": 0.35, "OUT": 0}
 ORDER = ["INTRO", "V1", "P1", "C1", "V2", "P2", "C2", "BR", "FC", "OUT"]
 
 def whole_song():
@@ -227,10 +228,16 @@ def section_specs(seed=19):
     # jz_spec sorts by start; map back by order (all starts increase in CUTS order)
     out = {}
     bounds = [i for _, i in secs] + [len(allc)]
+    # sections meet on whole frames (24 fps), so the joined video stays on the song: a section starts on the frame
+    # nearest its first cut, and that cut starts there
+    fr = lambda t: round(round(t * 24) / 24, 4)
+    T0 = [0.0] + [fr(allc[bounds[k]]['start']) for k in range(1, len(secs))]
+    for k in range(1, len(secs)):
+        allc[bounds[k]]['start'] = T0[k]
     for k, (name, i0) in enumerate(secs):
         cs = allc[i0:bounds[k + 1]]
-        t0 = 0.0 if k == 0 else cs[0]['start']
-        t1 = cs[-1]['end'] if k + 1 == len(secs) else allc[bounds[k + 1]]['start']
+        t0 = T0[k]
+        t1 = fr(cs[-1]['end']) if k + 1 == len(secs) else T0[k + 1]
         pool, fx = PHASE[name]
         sc = []
         for c in cs:
@@ -240,11 +247,13 @@ def section_specs(seed=19):
             if 'readBy' in c: c['readBy'] = round(c['readBy'] - t0, 3)
             sc.append(c)
         sc[-1]['end'] = round(t1 - t0, 3)          # the section's last cut runs to the next section
+        style = copy.deepcopy(STYLE)
+        style["ghost"] = GHOST[name]          # colour-shifted doubles of the lyric: none while she is calm, some in the jealousy and hate
         spec = {"title": "黒薔薇ノ契リ", "artist": "", "width": 1920, "height": 1080, "fps": 24, "seed": seed + k,
-                "style": STYLE, "fontCandidates": FONTS, "fx": fx,
+                "style": style, "fontCandidates": FONTS, "fx": fx,
                 "parts": {"noStrong": True, "allow": pool}, "kit": KIT, "lead": 0.06, "autoTrans": True, "autoEvents": True,
                 "shadeMode": "halo", "imageCam": {"zoom": 0.75, "rot": 0.3, "pan": [12, 0]},
-                "cuts": sc, "duration": round(t1 - t0, 3)}
+                "cuts": sc, "duration": round((round((t1 - t0) * 24) + 0.01) / 24, 6)}   # whole frames, whether AE rounds or floors
         out[name] = (spec, t0, t1)
     return out, notes
 
@@ -267,9 +276,10 @@ def main():
         stills = []
         if a.stills:
             for c in spec['cuts']:
-                t = c.get('readBy', c['start'] + 0.6) + 0.35
-                if 'chars' in c: t = c['chars'][-1] + 0.2
-                stills.append(round(min(t, c['end'] - 0.1), 2))
+                if 'chars' not in c: t = c['start'] + min(1.5, (c['end'] - c['start']) / 2)
+                elif c.get('sync') == 'char': t = c['chars'][-1] + 0.12          # every glyph is in, before the exit
+                else: t = c['readBy'] + 0.1                                     # the whole screen is in by readBy
+                stills.append(round(min(t, c['end'] - 0.05), 2))
         job = {"id": sid, "type": "ae_script", "script": SCRIPT, "timeout": 1500, "collect": ["plan.json"],
                "params": {"core": CORE, "spec_file": PCDIR + f"\\specs\\{a.id}\\spec_{name}.json", "name": f"KURO_{name}",
                           "audio": WAV, "audio_start": -t0, "stills": stills, "stillMode": "queue",
