@@ -11,6 +11,8 @@ cuts.json = {
   "lead": 0.06,          readable this long before the voice
   "switch_after": 0.1,   a cut changes this long after the previous cut's last glyph ends ...
   "switch_before": 0.34, ... and at the latest this long before the next cut's first glyph
+  "switch_before_char": 0.16, ... or this long when the next cut shows its glyphs one by one (sync "char")
+  "hold_last": 0.25,     a sync "char" cut stays until its last glyph has been readable this long (if the next allows)
   "tail": 0.8,           the last lyric cut stays this long after its last glyph (unless a cut follows)
   "cuts": [
     {"line": 5},                              the whole line (index into timing lines, from 0)
@@ -23,6 +25,8 @@ cuts.json = {
 
 Timing rules (mv-rules-general, 2026-11-18): the lyric is readable 0.06 s before the voice (readBy), a cut changes 0.1 s
 after the previous line ends and at the latest 0.34 s before the next line starts, and text enters only after the change.
+Lines shown glyph by glyph (sync "char") switch later: lead + 0.1 s before the next first glyph, and not before the last
+glyph has been readable 0.25 s; MVJZ then shortens the exit and shows a glyph sung too close to the switch earlier.
 Explicit "start" / "end" on a cut win over the computed ones. All times in the spec are song time minus offset.
 """
 import argparse, json, sys
@@ -53,6 +57,11 @@ def make(cfg):
     off = float(cfg.get('offset', 0))
     lead, after, before, tail = (float(cfg.get(k, d)) for k, d in (('lead', 0.06), ('switch_after', 0.1), ('switch_before', 0.34), ('tail', 0.8)))
     defaults = cfg.get('defaults', {})
+    before_char = float(cfg.get('switch_before_char', lead + 0.1))
+    hold = float(cfg.get('hold_last', 0.25))
+
+    def is_char(r):
+        return r['cut'].get('sync', defaults.get('sync')) == 'char'
     rows = []
     for n, c in enumerate(cfg['cuts']):
         c = dict(c)
@@ -83,7 +92,14 @@ def make(cfg):
             r['start'] = r['s'] - before
         else:
             p = lyr[i - 1]
-            r['start'] = max(min(p['e'] + after, r['s'] - before), p['s'] + 0.25)
+            # a cut whose glyphs appear one by one with the voice (sync "char") needs no time to be read before its first
+            # glyph, only lead + 0.1 s for its screen to come in; the cut before it keeps its last glyph readable (hold)
+            b = before_char if is_char(r) else before
+            t = min(p['e'] + after, r['s'] - b)
+            if is_char(p):
+                t = max(t, p['chars'][-1] - lead + hold)
+            t = min(t, r['s'] - lead)
+            r['start'] = max(t, p['s'] + 0.25)
         if i > 0 and 'end' not in lyr[i - 1]['cut']:
             lyr[i - 1]['end'] = r['start']
     if lyr:

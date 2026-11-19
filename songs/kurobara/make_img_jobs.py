@@ -17,6 +17,16 @@ P = {
          "silver chains and crosses, the same black frilled lace dress, holding the same black rose close to her lips with both hands, tears on her cheeks, "
          "the same black roses and the same tall gothic window behind her. Keep the girl and the rose in the right half of the picture and extend the dark room "
          "naturally to the left, with black roses and moonlight.", 1, 0),
+ "j17": ("Recreate the girl of <Picture 1> in a wide 16:9 illustration with a lot of empty space: the same pale girl with long silver-blonde hair, "
+         "the same black lace bonnet with ribbons, silver chains and crosses and the same black frilled lace dress, seen from the chest up, holding the same "
+         "black rose close to her lips with both hands, tears on her cheeks, her face turned slightly to the right. She is placed entirely inside the left third "
+         "of the picture, close to the left edge. The right two thirds are quiet negative space: a dim gothic room in deep shadow, a tall arched window far "
+         "behind, faint moonlight and a few black roses softly out of focus, with no bright or busy details.", 1, 0),
+ "j18": ("Recreate the girl of <Picture 1> in a wide 16:9 illustration with a lot of empty space: the same pale girl with long silver-blonde hair, "
+         "the same black lace bonnet with ribbons, silver chains and crosses and the same black frilled lace dress, seen from the chest up, holding the same "
+         "black rose close to her lips with both hands, tears on her cheeks, her face turned slightly to the left. She is placed entirely inside the right third "
+         "of the picture, close to the right edge. The left two thirds are quiet negative space: a dim gothic room in deep shadow, a tall arched window far "
+         "behind, faint moonlight and a few black roses softly out of focus, with no bright or busy details.", 1, 0),
  "p01": ("Near-total darkness. A single black rose petal is falling slowly through one narrow shaft of cold moonlight, "
          "with a few tiny specks of dust glinting in the light. Below, out of focus, a dark polished floor.", 0, 1),
  "p02": ("A quiet gothic bedroom at night: a tall arched window with thin leaded glass panes, cold moonlight pouring through it like glass "
@@ -45,15 +55,19 @@ P = {
 }
 def prompt(k):
     txt, red, kind = P[k]
-    s = txt + " " + STYLE + (RED if red else "") + ("" if k == "j16" else REF)
+    s = txt + " " + STYLE + (RED if red else "") + ("" if k[0] == "j" else REF)
     if kind == 1: s += EMPTY
     if kind == 2: s += HANDS
     return s + NOTEXT
 out = sys.argv[1]
+stamp = sys.argv[2] if len(sys.argv) > 2 else "20261119-2110"
+only = sys.argv[3].split(",") if len(sys.argv) > 3 else list(P)
 os.makedirs(out, exist_ok=True)
 for i, k in enumerate(P):
+    if k not in only:
+        continue
     for v, seed in (("a", 7100 + i * 37), ("b", 7100 + i * 37 + 1)):
-        jid = f"20261119-2110-kuro-{k}{v}"
+        jid = f"{stamp}-kuro-{k}{v}"
         j = {"id": jid, "type": "comfy_graph", "graph": "C:\\AI model\\autopilot\\work\\mv\\graphs\\h3_image_ref1_v1.json",
              "set_inputs": {"4": {"image": "mv_kuro_jacket_ref.png"}, "5": {"prompt": prompt(k), "width": 3072, "height": 1728},
                             "7": {"seed": seed}, "9": {"filename_prefix": f"mv/kuro_{k}{v}"}}, "timeout": 5400}

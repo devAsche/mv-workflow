@@ -14,7 +14,7 @@
 //   * a "kit": decor parts with fixed parameters repeated on every cut (one look across the song).
 // Spec format: see pc/autopilot/mv/ae/jz/README.md.
 
-var MVJZ_VERSION = '0.1.0';
+var MVJZ_VERSION = '0.1.1';
 var MVJZ_IMG = {};
 
 function mvJzIsArr(o) { return Object.prototype.toString.call(o) === '[object Array]'; }
@@ -230,7 +230,8 @@ function mvJzPlan(spec) {
             if (sc.chars && sc.sync) {
                 var ct = mvJzCharTimes(text, sc.chars, start);
                 if (ct) { c.mvSync = sc.sync === 'char' ? 'char' : 'word'; c.mvCharT = ct.compact; c.mvSyncStyle = sc.syncStyle || 'fade'; c.mvSyncDur = sc.syncDur || 0.12;
-                          c.mvLead = sc.lead != null ? sc.lead : (spec.lead != null ? spec.lead : 0.06); }
+                          c.mvLead = sc.lead != null ? sc.lead : (spec.lead != null ? spec.lead : 0.06);
+                          mvJzKeepWhole(c, sc, spec); }
             }
             if (spec.autoEvents !== false) mvJzAutoEvents(plan, c, rng, st, en, fx, fxHist, emph, line !== prevLine && !!sc.impact);
         }
@@ -255,6 +256,25 @@ function mvJzPlan(spec) {
     plan.duration = spec.duration || (lastEnd + 0.5);
     if (spec.keyBg) plan.keyBg = spec.keyBg;
     return plan;
+}
+// a sung line is whole on screen before it leaves (mv-rules-general: readable 0.25 s + 0.1 s per glyph after it, at most 1.4 s):
+// the exit is shortened (or made a cut) so it starts after the last glyph is readable, and a glyph sung too close to the
+// switch is shown earlier. spec.keepWhole: false turns this off; spec.readHold (0.25) / spec.readPer (0.1) / spec.readMax (1.4).
+function mvJzKeepWhole(c, sc, spec) {
+    if (spec.keepWhole === false || !c.mvCharT || !c.mvCharT.length) return;
+    var T = c.mvCharT, n = T.length, hold = spec.readHold != null ? spec.readHold : 0.25, per = spec.readPer != null ? spec.readPer : 0.1,
+        cap = spec.readMax != null ? spec.readMax : 1.4, lead = c.mvLead || 0, k, moved = 0;
+    var room = c.dur - (T[n - 1] - lead + hold);
+    if (sc.outDur == null && c.exit !== 'cut' && c.outDur > room) {
+        if (room >= 0.15) c.outDur = room; else { c.exit = 'cut'; c.outDur = 0; }
+    }
+    var exitAt = c.dur - (c.outDur || 0), floor = Math.min(c.inDur || 0, exitAt * 0.5);
+    for (k = n - 1; k >= 0; k--) {
+        var lim = exitAt - Math.min(cap, hold + per * (n - 1 - k)) + lead;
+        if (T[k] > lim) { T[k] = Math.max(lim, floor); moved++; }
+    }
+    for (k = 1; k < n; k++) if (T[k] < T[k - 1]) T[k] = T[k - 1];
+    if (moved) MVJZ_PLANLOG.push('cut at ' + jzN(c.start) + ': ' + moved + ' glyph(s) shown early to stay readable');
 }
 // the per-cut effect events of JIZURA's planner (15_plan.jsx), for cuts we place ourselves
 function mvJzAutoEvents(plan, c, rng, st, en, fx, fxHist, emph, impactStart) {
