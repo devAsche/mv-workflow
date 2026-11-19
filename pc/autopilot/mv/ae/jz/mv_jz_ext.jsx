@@ -281,14 +281,22 @@ function mvJzLayerText(L) {
     try { return String(L.property('ADBE Text Properties').property('ADBE Text Document').value.text); } catch (e) { return null; }
 }
 function mvJzCompact(s) { return String(s).replace(/[\s\u3000]+/g, ''); }
-// glyph offset of a text layer inside the cut's lyric (non-space glyphs), or -1
+// glyph offset of a text layer inside the cut's lyric (non-space glyphs), or -1. A text that occurs more than once
+// ("A B A") takes the first occurrence no earlier layer of this cut has taken; copies of a text taken already (repeats,
+// echoes) share its first occurrence.
 function mvJzOffset(c, txt) {
     if (!txt) return -1;
-    var a = jzChars(mvJzCompact(c.text)).join('\u0001'), b = jzChars(mvJzCompact(txt)).join('\u0001');
+    var S = '\u0001', a = S + jzChars(mvJzCompact(c.text)).join(S) + S, b = jzChars(mvJzCompact(txt)).join(S);
     if (!b) return -1;
-    var p = a.indexOf(b);
-    if (p < 0) return -1;
-    return p === 0 ? 0 : a.substr(0, p).split('\u0001').length - 1;
+    b = S + b + S;
+    var used = c.mvUsed || (c.mvUsed = {}), first = -1, p = a.indexOf(b), off;
+    while (p >= 0) {
+        off = a.substr(0, p + 1).split(S).length - 2;
+        if (first < 0) first = off;
+        if (!used[off]) { used[off] = true; return off; }
+        p = a.indexOf(b, p + 1);
+    }
+    return first;
 }
 var mvJzMotion0 = jzMotion;
 jzMotion = function (ctx, L, o) {
