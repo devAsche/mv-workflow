@@ -14,7 +14,7 @@
 //   * a "kit": decor parts with fixed parameters repeated on every cut (one look across the song).
 // Spec format: see pc/autopilot/mv/ae/jz/README.md.
 
-var MVJZ_VERSION = '0.1.7';
+var MVJZ_VERSION = '0.1.8';
 var MVJZ_IMG = {};
 
 function mvJzIsArr(o) { return Object.prototype.toString.call(o) === '[object Array]'; }
@@ -286,8 +286,9 @@ function mvJzKeepWhole(c, sc, spec) {
 function mvJzWholeScreen(c, sc, spec, ct) {
     if (!ct) return;
     var T = ct.compact, n = T.length, k;
-    if (sc.readBy != null && sc.stagger == null && c.enter !== 'cut') {
-        var avail = (+sc.readBy - c.start) - (c.inDur || 0);
+    if (sc.readBy != null && sc.stagger == null) {
+        // a 'cut' entrance (also the one a transition forces) still shows glyphs / layers one stagger apart
+        var avail = (+sc.readBy - c.start) - (c.enter === 'cut' ? 0 : (c.inDur || 0));
         c.stagger = jzClamp(avail / (n + 6), 0.004, c.stagger || 0.04);
     }
     var room = c.dur - (T[n - 1] + (spec.wholeHold != null ? spec.wholeHold : 0.1));
