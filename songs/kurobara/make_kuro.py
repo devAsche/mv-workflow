@@ -88,7 +88,7 @@ SPOKEN.update({
  "enter": ["hzShakyHand", "hzAlreadyThere", "blur"],
  "exit": ["drift", "wzSumiNijimi", "blur", "hzOutOfLight"],
  "hold": ["float", "still", "shadowSway"],
- "treat": ["none", "hzUneven"],
+ "treat": ["none"],
  "decor": ["petals", "tyRunningHead"],
  "trans": ["xqSoftSweep", "hrBlink"],
  "cam": ["panL", "panR", "tiltUp", "xqDriftTurn"],
