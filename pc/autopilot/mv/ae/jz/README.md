@@ -6,7 +6,7 @@ JIZURA自身の計画（`jzMakePlan`）は、行の時刻だけを受け取り�
 
 - **カットは私たちの計画から作る**: カットごとの開始・終了・文字は、文字単位の時刻（`timing_chars.json`）から決めます。カットに書いた項目（layout、enter、exit、hold、decor、treat、bg、cam、trans、scheme、params など）はそのまま使います。書いていない項目だけを、JIZURAの重みつきの選び方で、許した部品（`parts`）の中から選びます。
 - **文字単位の時刻**: `"sync": "word"` にすると、歌詞の一部を持つテキストレイヤーが、その最初の字が歌われる時刻に読める状態になります。`"sync": "char"` は1字ずつ歌われる時刻に出します（入り方 `mvSync`、`syncStyle` は fade・pop・drop・rise・blur）。`sync` が無ければ、カットの頭からJIZURAの動きのまま入ります。いずれも声の `lead` 秒（既定0.06秒）前に読めるようにします。
-- **絵を文字の下に敷く**: `"image"` を持つカットは、そのカットの中の背景色のすぐ上に絵を置き、ゆっくりしたカメラ（参考4本の中央値: 1秒あたりズーム0.75%・回転0.3°・横12px＠1920）と、文字の下の暗さ（`shade`）を足します。
+- **絵を文字の下に敷く**: `"image"` を持つカットは、そのカットの中の背景色のすぐ上に絵を置き、ゆっくりしたカメラ（参考4本の中央値: 1秒あたりズーム0.75%・回転0.3°・横12px＠1920）を付けます。絵はくっきり見せ、文字の下だけを暗くする決まり（2026-11-18）に合わせて、既定の `shade` は歌詞の形をぼかした影（`halo`、明るい文字の下は黒、暗い文字の下は白）です。`{"mode": "full"}` で画面全体に薄い色を重ねる方式にもできます。
 - **誌面キット**: `"kit"` に書いた飾りは、同じパラメータで全カットに付きます（曲を通して同じ枠・ラベル）。
 
 ## ファイル
@@ -49,13 +49,13 @@ PCには `C:\AI model\autopilot\mv\ae\jz\mvjz_core.jsx` と `C:\AI model\autopil
  "fx": {"motion": 0.6, "glitch": 0.3, "chroma": 0.5, "decor": 0.5, "texture": 0.6, "bgSwitch": 0.35, "flash": true, "hud": false},
  "parts": {"tags": ["calm"], "noStrong": true, "allow": {"cam": […]}, "deny": {"exit": […]}, "extra": false, "wa": true},
  "kit": ["cropMarks", {"id": "indexNum", "corner": true}],
- "shade": 30, "imageCam": {"zoom": 0.75, "rot": 0.3, "pan": [12, 0]}, "lead": 0.06,
+ "shade": 75, "shadeMode": "halo", "imageCam": {"zoom": 0.75, "rot": 0.3, "pan": [12, 0]}, "lead": 0.06,
  "autoTrans": true, "autoEvents": true, "events": [{"t": 7.0, "type": "flash"}],
  "cuts": [
   {"kind": "title", "start": 0.2, "end": 2.0},
   {"text": "…", "start": 2.0, "end": 3.6, "line": 0, "chars": [2.1, 2.3], "readBy": 2.04,
    "layout": "center", "enter": "blur", "sync": "word", "emph": false, "impact": false,
-   "image": {"path": "C:\\…\\art.png", "focus": [0.4, 0.5], "cam": {"zoom": -0.75}, "keepPaper": true}, "shade": {"color": "#000000", "opacity": 30}},
+   "image": {"path": "C:\\…\\art.png", "focus": [0.4, 0.5], "cam": {"zoom": -0.75}, "keepPaper": true}, "shade": {"mode": "halo", "color": "#000000", "opacity": 75, "blur": 46}},
   {"kind": "interlude", "start": 8.4, "end": 10.0, "params": {"variant": "counter"}}
  ]
 }

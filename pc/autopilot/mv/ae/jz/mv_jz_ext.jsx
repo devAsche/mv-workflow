@@ -380,15 +380,27 @@ function mvJzPlaceImage(wc, cut, sc, W, H, spec) {
         if (rot !== 0) { R.setValueAtTime(0, -rot / 2); R.setValueAtTime(dur, rot / 2); }
     } else { S.setValue([cover, cover]); P.setValue([W / 2, H / 2]); }
     if (im.opacity != null) jzXf(L, 'ADBE Opacity').setValue(im.opacity);
-    // shade between picture and lyric: { color, opacity } | number (opacity of a colour opposite to the text) | false
+    // shade between picture and lyric (rule 2026-11-18: the picture stays clear, only the area under the lyric darkens).
+    //   "halo" (default): a blurred, filled copy of the cut's lyric under it, dark under light text and light under dark
+    //   "full": a solid over the whole picture. shade = number (opacity) | { mode, color, opacity, blur (px at 1080) } | false
     var sh = cut.mvShade, light = jzLum(sc.fg) > 0.5;
     if (sh !== false && sh !== 0) {
-        var col = light ? '#000000' : '#ffffff', op = light ? 32 : 30;
-        if (typeof sh === 'number') op = sh;
-        else if (sh && typeof sh === 'object') { if (sh.color) col = sh.color; if (sh.opacity != null) op = sh.opacity; }
-        var SL = wc.layers.addSolid(jzHex(col), 'MV Shade', W, H, 1, dur);
-        SL.moveBefore(L);
-        jzXf(SL, 'ADBE Opacity').setValue(op);
+        var so = sh && typeof sh === 'object' ? sh : {}, mode = so.mode || spec.shadeMode || 'halo';
+        var col = so.color || (light ? '#000000' : '#ffffff');
+        var op = typeof sh === 'number' ? sh : (so.opacity != null ? so.opacity : (mode === 'halo' ? (light ? 75 : 70) : (light ? 32 : 30)));
+        var CL = mode === 'halo' ? mvJzFindLayer(wc, 'content') : null;
+        if (CL) {
+            var HL = CL.duplicate();
+            HL.name = 'MV Halo';
+            HL.moveBefore(L);
+            var fe = jzEffect(HL, 'ADBE Fill', 'MV Halo Fill'); jzEP(fe, 3, jzHex(col)); jzEP(fe, 7, 1);
+            var bl = jzEffect(HL, 'ADBE Gaussian Blur 2', 'MV Halo Blur'); jzEP(bl, 1, (so.blur != null ? so.blur : 46) * H / 1080); jzEP(bl, 3, 0);
+            jzXf(HL, 'ADBE Opacity').setValue(op);
+        } else {
+            var SL = wc.layers.addSolid(jzHex(col), 'MV Shade', W, H, 1, dur);
+            SL.moveBefore(L);
+            jzXf(SL, 'ADBE Opacity').setValue(op);
+        }
     }
     if (im.keepPaper === false) { var pp = mvJzFindLayer(wc, 'JZ Paper'); if (pp) pp.enabled = false; }
     return L;

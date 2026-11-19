@@ -9,7 +9,7 @@
  "parts": {"tags": ["calm", "editorial", "emotional"], "noStrong": true,
    "allow": {"cam": ["push", "pullOut", "panL", "panR", "driftDiag", "dollyIn", "floatNoise", "focusIn", "tiltUp", "tiltDown", "xqArcSweep", "xqPushPull", "xqDriftTurn", "xqCraneUp", "tzMeasureZoom"]}},
  "kit": ["cropMarks", {"id": "indexNum", "corner": true}],
- "shade": 28,
+ "shade": 70,
  "cuts": [
   {"kind": "title", "start": 0.2, "end": 2.0},
   {"text": "一行目のテスト", "start": 2.0, "end": 3.6, "line": 0, "layout": "center", "enter": "blur", "exit": "cut",
