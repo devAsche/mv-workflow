@@ -8,7 +8,9 @@
 //   name: "MV_jz_test" (main comp name), light: false (JIZURA's light build: no ghosts / paper / bloom / grain),
 //   audio: "...wav" (optional), audio_start: comp time where the audio file starts (a section built with offset o: -o),
 //   stills: [t, ...] (comp times), stillMode: "queue" (TIFF items for aerender) | "png",
-//   render: null | "h264", save: "name.aep" (in the job's output folder), plan_out: true (writes plan.json next to it)
+//   render: null | "h264", save: "name.aep" (in the job's output folder), plan_out: true (writes plan.json next to it),
+//   qa: null | "mask" (every text layer filled pure green #00FF00, halos off: stills show exactly where the lyric is)
+//          | "bare" (text layers and halos off: the picture as it is behind the lyric)
 // }
 (function () {
     var P = MVJOB.params, t0 = new Date().getTime();
@@ -43,6 +45,27 @@
     var comp = res.comp;
     comp.name = P.name || "MV_jz";
     mvlog("built in " + Math.round((new Date().getTime() - t0) / 1000) + " s: " + res.plan.cuts.length + " cuts, " + res.images + " images");
+    var qa = null;
+    if (P.qa) {
+        qa = { mode: P.qa, text: 0, halos: 0 };
+        for (var ii = 1; ii <= app.project.numItems; ii++) {
+            var it = app.project.item(ii);
+            if (!(it instanceof CompItem)) continue;
+            for (var li = 1; li <= it.numLayers; li++) {
+                var Ly = it.layer(li);
+                if (Ly.name === "MV Halo") { Ly.enabled = false; qa.halos++; continue; }
+                if (!(Ly instanceof TextLayer)) continue;
+                if (P.qa === "bare") Ly.enabled = false;
+                else {
+                    var fe = Ly.property("ADBE Effect Parade").addProperty("ADBE Fill");
+                    fe.property(3).setValue([0, 1, 0, 1]);
+                    try { fe.moveTo(1); } catch (em) {}
+                }
+                qa.text++;
+            }
+        }
+        mvlog("qa " + P.qa + ": " + qa.text + " text layers, " + qa.halos + " halos off");
+    }
 
     var stills = [], i;
     for (i = 0; i < (P.stills || []).length; i++) {
@@ -63,6 +86,6 @@
     }
     MVJOB.result = { aep: aep, comp: comp.name, stills: stills, render: render, plan: planPath, images: res.images,
         cuts: cuts, cut_columns: "start end layout enter exit hold cam trans treat bg decor sync image",
-        plan_notes: res.planLog, build_log: res.log, fallbacks: res.fallbacks, fallback_keys: res.fallbackKeys, missing_fonts: res.missingFonts,
+        qa: qa, plan_notes: res.planLog, build_log: res.log, fallbacks: res.fallbacks, fallback_keys: res.fallbackKeys, missing_fonts: res.missingFonts,
         secs: Math.round((new Date().getTime() - t0) / 1000) };
 })();

@@ -10,6 +10,7 @@ PCDIR = 'C:\\AI model\\autopilot\\work\\mv\\kurobara'
 WAV = 'C:\\Users\\user\\Videos\\MV制作\\黒薔薇ノ契リ\\黒薔薇ノ契リ.wav'
 CORE = 'C:\\AI model\\autopilot\\mv\\ae\\jz\\mvjz_core.jsx'
 SCRIPT = 'C:\\AI model\\autopilot\\mv\\ae\\build_jz.jsx'
+SHIFTS = json.load(open(os.path.join(HERE, 'shifts.json'), encoding='utf-8')) if os.path.exists(os.path.join(HERE, 'shifts.json')) else {}
 PICK = json.load(open(os.path.join(HERE, 'img', 'pick.json'))) if os.path.exists(os.path.join(HERE, 'img', 'pick.json')) else {}
 
 def pic(key, **kw):
@@ -18,21 +19,23 @@ def pic(key, **kw):
     return d
 
 # ---------------------------------------------------------------- look: one style for the whole song
-# scheme 0 moon (pure love), 1 letter paper, 2 cold (jealousy), 3 night crimson (hate), 4 crimson field, 5 ash (spoken)
+# scheme 0 moon (pure love), 1 letter paper, 2 cold (jealousy), 3 night crimson (hate), 4 crimson field, 5 ash (spoken), 6 dark ink on a bright picture
 SCHEMES = [
- {"bg": "#0B0A10", "fg": "#EEEAF4", "sub": "#A59EB8", "accent": "#CFC8E0", "accent2": "#7C7392", "ink": "#EEEAF4", "dim": "#17151E", "ghostA": "#8C84A6", "ghostB": "#3A3448"},
+ {"bg": "#0B0A10", "fg": "#EEEAF4", "sub": "#A59EB8", "accent": "#CFC8E0", "accent2": "#8A82A0", "ink": "#EEEAF4", "dim": "#17151E", "ghostA": "#8C84A6", "ghostB": "#3A3448"},
  {"bg": "#DAD5DE", "fg": "#16131B", "sub": "#57515F", "accent": "#2A2530", "accent2": "#6E1626", "ink": "#16131B", "dim": "#CBC5D0", "ghostA": "#8D8696", "ghostB": "#6E1626", "paper": True},
- {"bg": "#07070A", "fg": "#DCD9E2", "sub": "#7F7A8C", "accent": "#8E1A2C", "accent2": "#B8B2C6", "ink": "#DCD9E2", "dim": "#121117", "ghostA": "#5A5468", "ghostB": "#8E1A2C"},
- {"bg": "#0A0305", "fg": "#F2E7E9", "sub": "#B07C84", "accent": "#C0152F", "accent2": "#F2E7E9", "ink": "#C0152F", "dim": "#1A070B", "ghostA": "#C0152F", "ghostB": "#3A0A12"},
- {"bg": "#5E0813", "fg": "#F7EDEF", "sub": "#E2B3BB", "accent": "#0A0305", "accent2": "#F7EDEF", "ink": "#F7EDEF", "dim": "#4E0610", "ghostA": "#0A0305", "ghostB": "#C0152F"},
- {"bg": "#050506", "fg": "#CFCBD6", "sub": "#6D6878", "accent": "#9A1B30", "accent2": "#CFCBD6", "ink": "#CFCBD6", "dim": "#0F0F12", "ghostA": "#3E3A46", "ghostB": "#9A1B30"},
+ {"bg": "#07070A", "fg": "#DCD9E2", "sub": "#7F7A8C", "accent": "#E0364C", "accent2": "#B8B2C6", "ink": "#DCD9E2", "dim": "#121117", "ghostA": "#5A5468", "ghostB": "#8E1A2C"},
+ {"bg": "#0A0305", "fg": "#F2E7E9", "sub": "#B07C84", "accent": "#E8394F", "accent2": "#F2E7E9", "ink": "#E8394F", "dim": "#1A070B", "ghostA": "#C0152F", "ghostB": "#3A0A12"},
+ {"bg": "#5E0813", "fg": "#F7EDEF", "sub": "#E2B3BB", "accent": "#FFC4CE", "accent2": "#F7EDEF", "ink": "#F7EDEF", "dim": "#4E0610", "ghostA": "#0A0305", "ghostB": "#C0152F"},
+ {"bg": "#050506", "fg": "#CFCBD6", "sub": "#8C8798", "accent": "#E0364C", "accent2": "#CFCBD6", "ink": "#CFCBD6", "dim": "#0F0F12", "ghostA": "#3E3A46", "ghostB": "#9A1B30"},
+ # 6 dark ink: only for a line that has to sit on a bright part of its picture (tools/jz_contrast.py "ink": "dark")
+ {"bg": "#D8D2DA", "fg": "#141018", "sub": "#4A4350", "accent": "#7A1022", "accent2": "#141018", "ink": "#141018", "dim": "#C9C2CC", "ghostA": "#8D8696", "ghostB": "#7A1022"},
 ]
 STYLE = {"name": "黒薔薇", "desc": "moonlit silver-lavender, black roses, a crimson that grows", "moods": ["emotional", "calm", "editorial"],
          "schemes": SCHEMES,
          "fonts": {"display": ["mincho_black"], "serif": ["shippori"], "body": ["mincho"], "mono": ["mono"]},
          "texture": {"grain": 0.55, "paper": 0.25, "scan": 0}, "ghost": 0.35,
          "bias": {"layout": {"vcols": 2, "mixed": 1.4, "quote": 1.3, "kanjiFocus": 1.2},
-                  "enter": {"blur": 1.6, "inkBleed": 1.6, "fadeStagger": 1.4}, "exit": {"drift": 1.4, "wzHanaChiru": 1.4}},
+                  "enter": {"blur": 1.6, "hzAlreadyThere": 1.5, "fadeStagger": 1.4}, "exit": {"drift": 1.4, "wzHanaChiru": 1.4}},
          "decor": {"petals": 0.8, "decoCorners": 0.7}, "hud": False}
 FONTS = {"mincho_black": ["ZenOldMincho-Black", "ZenOldMincho-Bold"], "shippori": ["ShipporiMinchoB1-Bold", "ShipporiMinchoB1-SemiBold"],
          "mincho": ["ZenOldMincho-SemiBold", "ZenOldMincho-Medium", "ShipporiMinchoB1-Medium"], "mincho_bold": ["ZenOldMincho-Bold"],
@@ -41,55 +44,56 @@ FONTS = {"mincho_black": ["ZenOldMincho-Black", "ZenOldMincho-Bold"], "shippori"
 
 # ---------------------------------------------------------------- part pools per phase (the pickers choose inside these)
 CALM = {
- "layout": ["vcols", "mixed", "center", "quote", "kanjiFocus", "justified", "tyRuby"],
- "enter": ["blur", "fadeStagger", "blurStagger", "inkBleed", "brushReveal", "backlight", "glint", "trackIn", "riseMask", "tyRubyDrop", "xgFocusHunt", "tyDotGrow"],
- "exit": ["drift", "blur", "dissolve", "blurOutStagger", "wzHanaChiru", "echoOut", "hazeOut", "xjFocusPull", "xjStepFade"],
- "hold": ["breathe", "float", "shimmer", "glowFlicker", "focusRack", "xkFocusBreath", "drift"],
- "treat": ["none", "softShadow", "glow", "fadeChars"],
- "cam": ["push", "pullOut", "driftDiag", "floatNoise", "focusIn", "xqDriftTurn", "xqCraneUp", "tzMeasureZoom", "dollyIn"],
- "trans": ["xqSoftSweep", "uncover", "inkBlob"],
- "decor": ["petals", "decoCorners", "tyRunningHead", "risingParticles", "kasumi", "watermarkKanji", "vines"],
- "bg": ["none", "nightMoon", "vignettePulse", "godRays", "marble", "spotlight"],
- "fx": ["chroma", "shake", "zoom", "flash", "bloomFlash", "defocus", "dustScratches", "xrExposureDip", "xrBlink", "heartbeat", "wzHanafubuki", "ripple", "echoFrames"],
+ "layout": ["vcols", "mixed", "center", "quote", "justified", "tyRuby"],
+ "enter": ["blur", "fadeStagger", "brushReveal", "glint", "hrManifest", "hzAlreadyThere", "strokeDraw"],
+ "exit": ["drift", "blur", "wzHanaChiru", "xjFocusPull", "xjStepFade", "hzOutOfLight", "wzSumiNijimi"],
+ "hold": ["float", "shadowSway", "hzPresence", "noiseDrift", "sway", "still"],
+ "treat": ["none", "glow", "fadeChars"],
+ "cam": ["panL", "panR", "tiltUp", "xqDriftTurn"],
+ "trans": ["xqSoftSweep", "inkBlob"],
+ "decor": ["petals", "tyRunningHead", "risingParticles"],
+ "bg": ["none", "nightMoon", "spotlight"],
+ "fx": ["chroma", "flash", "bloomFlash", "dustScratches", "xrExposureDip", "xrBlink", "wzHanafubuki"],
 }
 COLD = copy.deepcopy(CALM)
 COLD.update({
- "layout": ["vcols", "mixed", "stack", "condensed", "quote", "kanjiFocus"],
- "enter": ["slice", "blur", "scramble", "inkBleed", "printRegister", "xgDoubleVision", "hzShakyHand", "trackIn", "xeRedact", "flicker"],
- "exit": ["glitch", "drift", "tyStrike", "xiRedact", "scribbleOut", "xjDoubleVision", "blurOutStagger", "burn"],
- "hold": ["noiseDrift", "xkDoubleVision", "shadowSway", "breathe", "hrLagOne", "echoTrail"],
- "treat": ["none", "strike", "hrRedact", "echoOutline", "boxed", "toneShadow", "hzColdRim"],
- "decor": ["decoCorners", "vines", "petals", "tyRunningHead", "hrDrips", "smoke", "watermarkKanji"],
+ "layout": ["vcols", "mixed", "stack", "condensed", "quote"],
+ "enter": ["slice", "blur", "scramble", "printRegister", "hzShakyHand", "flicker", "hzUnwatched", "hzLateSnap"],
+ "exit": ["glitch", "drift", "xiRedact", "burn", "hrShiver", "xjColourDrain"],
+ "hold": ["noiseDrift", "shadowSway", "hrLagOne", "hzPassing", "hzLoneTremor", "hzPresence"],
+ "treat": ["none", "strike", "hrRedact", "boxed", "hzColdRim"],
+ "decor": ["petals", "tyRunningHead", "hrScratches", "hzFilmDirt"],
  "trans": ["xqSoftSweep", "sliceShift", "hrBlink", "inkBlob"],
- "bg": ["none", "vignettePulse", "spotlight", "filmStrip"],
- "fx": ["chroma", "shake", "zoom", "defocus", "dustScratches", "xrExposureDip", "xrBlink", "heartbeat", "echoFrames",
+ "cam": ["panL", "panR", "xqDriftTurn", "handheld", "hzGlanceBack", "hzColdShiver"],
+ "bg": ["none", "spotlight", "filmStrip"],
+ "fx": ["chroma", "shake", "dustScratches", "xrExposureDip", "xrBlink",
         "slice", "rgbSplit", "interlace", "hzDrain", "hzColdBreath", "xrLampFlicker", "blackFrame", "trackingNoise"],
 })
 HATE = copy.deepcopy(COLD)
 HATE.update({
- "layout": ["stack", "mixed", "condensed", "kanjiFocus", "vcols", "center"],
- "enter": ["slice", "scramble", "echoIn", "inkBleed", "hrManifest", "xgAfterimage", "printRegister", "assemble"],
- "exit": ["glitch", "burn", "scorchOut", "hrDrain", "wzHanaChiru", "slashOut", "tyStrike", "explode"],
- "hold": ["heartbeat", "noiseDrift", "echoTrail", "xkDoubleVision", "hrTwitch", "xkLoudWeight"],
- "treat": ["none", "hrInkBleed", "echoOutline", "strike", "glow", "outlineOffset", "hrEroded"],
- "decor": ["hrCracks", "hrDrips", "petals", "vines", "decoCorners"],
+ "layout": ["stack", "mixed", "condensed", "vcols", "center"],
+ "enter": ["slice", "scramble", "hrManifest", "printRegister", "hrUneasy", "hrClawReveal", "hzLampSweep", "flicker"],
+ "exit": ["glitch", "burn", "scorchOut", "wzHanaChiru", "explode", "hrShiver"],
+ "hold": ["noiseDrift", "hrLagOne", "hzLoneTremor", "hrFlickerLight", "hzPassing", "shadowSway"],
+ "treat": ["none", "hrInkBleed", "strike", "glow", "hrEroded"],
+ "decor": ["hrCracks", "petals", "hrScratches"],
  "trans": ["sliceShift", "hrBlink", "inkBlob", "flashCross"],
- "cam": ["push", "pullOut", "driftDiag", "dutch", "xqHeartbeat", "handheld", "dollyIn", "xqWindUp"],
- "fx": ["chroma", "shake", "zoom", "flash", "slice", "block", "rgbSplit", "interlace", "hzDrain", "blackFrame", "trackingNoise", "heartbeat",
+ "cam": ["panL", "panR", "xqDriftTurn", "handheld", "hzColdShiver", "hzGlanceBack"],
+ "fx": ["chroma", "shake", "flash", "slice", "block", "rgbSplit", "interlace", "hzDrain", "blackFrame", "trackingNoise",
         "shatter", "hzTear", "strobe", "xrDropout", "wzSumiShibuki", "hzClosingDark", "invert"],
 })
 SPOKEN = copy.deepcopy(CALM)
 SPOKEN.update({
- "layout": ["letterPaper", "hzTornNote", "quote", "vcols", "tyMargin", "center", "footnote"],
- "enter": ["hzShakyHand", "inkBleed", "fadeStagger", "blur"],
- "exit": ["drift", "wzSumiNijimi", "blur", "xjShadowStay", "hzOutOfLight"],
- "hold": ["breathe", "hzSlowBreath", "glowFlicker", "still"],
+ "layout": ["letterPaper", "quote", "vcols", "center"],
+ "enter": ["hzShakyHand", "hzAlreadyThere", "fadeStagger", "blur"],
+ "exit": ["drift", "wzSumiNijimi", "blur", "hzOutOfLight"],
+ "hold": ["float", "hzPresence", "still", "shadowSway"],
  "treat": ["none", "fadeChars", "hzUneven"],
- "decor": ["smoke", "hrDustBeam", "decoCorners", "petals", "tyRunningHead"],
+ "decor": ["petals", "tyRunningHead"],
  "trans": ["xqSoftSweep", "hrBlink"],
- "cam": ["push", "pullOut", "floatNoise", "hzHeldBreath", "focusIn"],
- "bg": ["none", "spotlight", "vignettePulse"],
- "fx": ["chroma", "shake", "defocus", "dustScratches", "xrExposureDip", "xrBlink", "hzFaint", "heartbeat"],
+ "cam": ["panL", "panR", "tiltUp", "xqDriftTurn"],
+ "bg": ["none", "spotlight"],
+ "fx": ["chroma", "dustScratches", "xrExposureDip", "xrBlink"],
 })
 FX_CALM = {"motion": 0.35, "glitch": 0.04, "chroma": 0.12, "decor": 0.45, "texture": 0.6, "bgSwitch": 0, "flash": False, "hud": False}
 FX_COLD = {"motion": 0.45, "glitch": 0.18, "chroma": 0.35, "decor": 0.5, "texture": 0.6, "bgSwitch": 0, "flash": False, "hud": False}
@@ -103,17 +107,17 @@ def L(i, **kw):
 # ---------------------------------------------------------------- the cut table (song order); "sec" opens a section
 CUTS = [
  # INTRO 0:00-0:40  a petal falls; the first four lines are quiet and vertical; the title on the jacket
- {"sec": "INTRO", "kind": "interlude", "image": pic("p01", focus=[0.5, 0.45], cam={"zoom": 0.6}), "scheme": 0, "params": {"variant": "quiet", "showTitle": False}},
- L(0, image=pic("p01", focus=[0.5, 0.5], cam={"zoom": 0.75}), layout="vcols", enter="inkBleed", exit="drift", scheme=0),
- L(1, image=pic("p01", focus=[0.45, 0.6], cam={"zoom": -0.6}), layout="vcols", enter="blurStagger", exit="drift", scheme=0),
- L(2, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.6}), layout="kanjiFocus", enter="blur", exit="wzHanaChiru", scheme=0),
- L(3, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.9}), layout="center", enter="fadeStagger", exit="blur", scheme=0, end=29.9),
- {"kind": "title", "start": 29.9, "end": 39.6, "text": "黒薔薇ノ契リ", "layout": "vcols", "params": {"variant": "repeat", "cols": 1}, "image": pic("j17", cam={"zoom": 0.5, "pan": [-10, 0]}), "enter": "inkBleed", "exit": "blur", "scheme": 0},
+ {"sec": "INTRO", "kind": "interlude", "image": pic("p01", focus=[0.5, 0.45], cam={"zoom": 0.6}), "scheme": 0, "cam": "tiltUp", "params": {"variant": "quiet", "showTitle": False}},
+ L(0, image=pic("p01", focus=[0.5, 0.5], cam={"zoom": 0.75}), layout="vcols", enter="hzAlreadyThere", exit="drift", scheme=0),
+ L(1, image=pic("p01", focus=[0.45, 0.6], cam={"zoom": -0.6}), layout="vcols", enter="fadeStagger", exit="drift", scheme=0),
+ L(2, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.6}), layout="center", enter="blur", exit="wzHanaChiru", scheme=0),
+ L(3, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.9}), layout="quote", enter="fadeStagger", exit="blur", scheme=0, end=29.9),
+ {"kind": "title", "start": 29.9, "end": 39.6, "text": "黒薔薇ノ契リ", "layout": "vcols", "params": {"variant": "repeat", "cols": 1}, "image": pic("j17", cam={"zoom": 0.5, "pan": [-10, 0]}), "enter": "hzAlreadyThere", "exit": "blur", "cam": "panL", "scheme": 0},
  # V1 0:40-1:09  moonlight, the room, one rose, the letter, the thorn
  {"sec": "V1"},
  L(4, image=pic("p02", focus=[0.62, 0.42]), layout="vcols", scheme=0, start=39.6),
  L(5, image=pic("p02", focus=[0.62, 0.42], cam={"zoom": 0.5, "pan": [-14, 0]}), layout="mixed", scheme=0),
- L(6, image=pic("p04", focus=[0.5, 0.5]), layout="kanjiFocus", scheme=0),
+ L(6, image=pic("p04", focus=[0.5, 0.5]), layout="quote", scheme=0),
  L(7, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": -0.6}), layout="center", scheme=0, emph=True),
  L(8, layout="quote", scheme=1),
  L(9, image=pic("p06", focus=[0.5, 0.55]), layout="tyRuby", scheme=0),
@@ -125,43 +129,43 @@ CUTS = [
  L(15, image=pic("p02", focus=[0.62, 0.42], cam={"zoom": 0.7}), layout="vcols", scheme=0),
  # P1 1:09-1:29  the pact: the sealed letter, then two shadows
  {"sec": "P1"},
- L(16, image=pic("p06", focus=[0.5, 0.5], cam={"zoom": 0.5}), layout="vcols", enter="inkBleed", scheme=0),
+ L(16, image=pic("p06", focus=[0.5, 0.5], cam={"zoom": 0.5}), layout="vcols", enter="hzAlreadyThere", scheme=0),
  L(17, image=pic("p06", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="quote", enter="brushReveal", scheme=0),
  L(18, image=pic("p07", focus=[0.5, 0.5]), layout="mixed", scheme=0),
- L(19, image=pic("p07", focus=[0.5, 0.5], cam={"zoom": 0.9}), layout="center", enter="backlight", scheme=0, emph=True),
+ L(19, image=pic("p07", focus=[0.5, 0.5], cam={"zoom": 0.9}), layout="center", enter="glint", scheme=0, emph=True),
  # C1 1:29-1:53  文字PV: every glyph on its own sung time
  {"sec": "C1"},
  L(20, glyphs=[0, 4], layout="vcols", params={"variant": "repeat", "cols": 1}, sync="char", syncStyle="blur", scheme=0, emph=True, impact=True, image=pic("j17", cam={"zoom": 0.9})),
  L(20, glyphs=[4, None], layout="vcols", params={"variant": "repeat", "cols": 1}, sync="char", syncStyle="blur", scheme=0, emph=True, image=pic("j18", cam={"zoom": 1.0})),
  L(21, layout="mixed", sync="char", syncStyle="blur", scheme=0),
  L(22, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="stack", sync="char", syncStyle="blur", scheme=0),
- L(23, layout="kanjiFocus", sync="char", syncStyle="blur", scheme=1),
+ L(23, layout="stack", sync="char", syncStyle="blur", scheme=1),
  L(24, glyphs=[0, 4], layout="center", sync="char", syncStyle="blur", scheme=0, emph=True, image=pic("p02", focus=[0.5, 0.45], cam={"zoom": -0.6})),
  L(24, glyphs=[4, None], layout="vcols", params={"variant": "repeat", "cols": 1}, sync="char", syncStyle="blur", scheme=0, emph=True, image=pic("j17", cam={"zoom": 1.0})),
- L(25, layout="tyLineFocus", sync="char", syncStyle="blur", scheme=0),
+ L(25, layout="quote", sync="char", syncStyle="blur", scheme=0),
  L(26, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": -0.7}), layout="vcols", sync="char", syncStyle="blur", scheme=0),
  L(27, layout="vcols", sync="char", syncStyle="blur", scheme=0, emph=True, end=110.4),
- {"kind": "interlude", "start": 110.4, "image": pic("p01", focus=[0.5, 0.5], cam={"zoom": 0.6}), "scheme": 0, "params": {"variant": "quiet", "showTitle": False}},
+ {"kind": "interlude", "start": 110.4, "image": pic("p01", focus=[0.5, 0.5], cam={"zoom": 0.6}), "scheme": 0, "cam": "tiltUp", "params": {"variant": "quiet", "showTitle": False}},
  # V2 1:53-2:23  someone else; the photo painted over
  {"sec": "V2"},
  L(28, image=pic("p07", focus=[0.5, 0.5], cam={"zoom": 0.5, "pan": [12, 0]}), layout="vcols", scheme=2, start=113.0),
  L(29, image=pic("p07", focus=[0.5, 0.5], cam={"zoom": 0.9}), layout="mixed", scheme=2),
- L(30, layout="tyLineFocus", scheme=2),
+ L(30, layout="center", scheme=2),
  L(31, layout="stack", scheme=2, emph=True),
  L(32, image=pic("p05", focus=[0.5, 0.5], cam={"zoom": -0.5}), layout="vcols", scheme=2),
  L(33, image=pic("p05", focus=[0.5, 0.5], cam={"zoom": 0.7}), layout="center", scheme=2),
  L(34, layout="quote", scheme=2),
- L(35, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="kanjiFocus", scheme=2, emph=True, treat="hzColdRim"),
+ L(35, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 0.8}), layout="center", scheme=2, emph=True, treat="hzColdRim"),
  L(36, image=pic("p08", focus=[0.5, 0.5]), layout="mixed", treat="strike", decor=[{"id": "crossOut"}], scheme=2),
  L(37, image=pic("p08", focus=[0.5, 0.5], cam={"zoom": 0.9}), layout="vcols", scheme=2),
  L(38, layout="condensed", scheme=2),
  L(39, image=pic("p05", focus=[0.5, 0.45], cam={"zoom": 1.0}), layout="vcols", scheme=2, emph=True),
  # P2 2:23-2:43  the prayer
  {"sec": "P2"},
- L(40, image=pic("p09", focus=[0.5, 0.5], cam={"zoom": 0.5}), layout="vcols", enter="inkBleed", scheme=2),
- L(41, image=pic("p09", focus=[0.5, 0.5], cam={"zoom": 0.7, "pan": [-12, 0]}), layout="kanjiFocus", scheme=2),
+ L(40, image=pic("p09", focus=[0.5, 0.5], cam={"zoom": 0.5}), layout="vcols", enter="hrManifest", scheme=2),
+ L(41, image=pic("p09", focus=[0.5, 0.5], cam={"zoom": 0.7, "pan": [-12, 0]}), layout="vcols", scheme=2),
  L(42, layout="quote", scheme=5),
- L(43, image=pic("p09", focus=[0.5, 0.4], cam={"zoom": 1.1}), layout="center", enter="echoIn", scheme=2, emph=True),
+ L(43, image=pic("p09", focus=[0.5, 0.4], cam={"zoom": 1.1}), layout="center", enter="hzLampSweep", scheme=2, emph=True),
  # C2 2:43-3:07  hate: crimson, the room overgrown
  {"sec": "C2"},
  L(44, glyphs=[0, 4], layout="center", sync="char", syncStyle="drop", treat="strike", scheme=3, emph=True, impact=True, image=pic("p03", focus=[0.5, 0.45], cam={"zoom": 0.9})),
@@ -171,7 +175,7 @@ CUTS = [
  L(47, layout="stack", sync="char", syncStyle="drop", scheme=3),
  L(48, glyphs=[0, 4], layout="center", sync="char", syncStyle="drop", scheme=4, emph=True, impact=True),
  L(48, glyphs=[4, None], layout="center", sync="char", syncStyle="drop", scheme=3, emph=True, image=pic("p03", focus=[0.5, 0.5], cam={"zoom": 1.2})),
- L(49, layout="kanjiFocus", sync="char", syncStyle="drop", scheme=3),
+ L(49, layout="center", sync="char", syncStyle="drop", scheme=3),
  L(50, image=pic("p03", focus=[0.4, 0.5], cam={"zoom": -0.8}), layout="vcols", sync="char", syncStyle="drop", scheme=3),
  L(51, image=pic("j17", cam={"zoom": 0.8}), layout="vcols", params={"variant": "split", "perCol": 6}, sync="char", syncStyle="drop", scheme=3, emph=True, end=186.5),
  # BR 3:06-3:29  spoken: the cracked mirror, written as she speaks
@@ -195,10 +199,10 @@ CUTS = [
  L(64, glyphs=[4, None], layout="center", sync="char", syncStyle="drop", scheme=4, emph=True),
  L(65, image=pic("p04", focus=[0.5, 0.5], cam={"zoom": 1.0}), layout="stack", sync="char", syncStyle="drop", scheme=3),
  L(66, image=pic("p03", focus=[0.5, 0.5], cam={"zoom": -0.9}), layout="vcols", sync="char", syncStyle="drop", scheme=3, emph=True, impact=True),
- L(67, layout="kanjiFocus", sync="char", syncStyle="drop", scheme=4),
+ L(67, layout="stack", sync="char", syncStyle="drop", scheme=4),
  L(68, glyphs=[0, 4], layout="vcols", params={"variant": "repeat", "cols": 1}, sync="char", syncStyle="blur", scheme=0, emph=True, image=pic("j18", cam={"zoom": -0.6})),
  L(68, glyphs=[4, None], layout="center", sync="char", syncStyle="blur", scheme=3, emph=True),
- L(69, layout="tyLineFocus", sync="char", syncStyle="blur", scheme=3),
+ L(69, layout="quote", sync="char", syncStyle="blur", scheme=3),
  L(70, image=pic("p11", focus=[0.5, 0.5], cam={"zoom": 0.7}), layout="vcols", sync="char", syncStyle="blur", scheme=3),
  L(71, image=pic("p11", focus=[0.5, 0.5], cam={"zoom": 1.2}), layout="center", sync="char", syncStyle="blur", scheme=3, emph=True, end=243.3),
  # OUT 4:03-4:25  whisper: the flower's words; the last line in crimson; the title
@@ -206,12 +210,12 @@ CUTS = [
  L(72, layout="center", enter="blur", exit="drift", scheme=5, start=243.3),
  L(73, layout="center", enter="blur", exit="drift", scheme=5),
  L(74, layout="center", enter="blur", exit="drift", scheme=5),
- L(75, layout="kanjiFocus", sync="char", syncStyle="blur", scheme=3, emph=True, end=259.6),
- {"kind": "title", "start": 259.6, "end": 264.8, "text": "黒薔薇ノ契リ", "layout": "vcols", "params": {"variant": "repeat", "cols": 1}, "image": pic("j18", cam={"zoom": -0.4}), "enter": "blur", "exit": "blur", "scheme": 3},
+ L(75, layout="vcols", sync="char", syncStyle="blur", scheme=3, emph=True, end=259.6),
+ {"kind": "title", "start": 259.6, "end": 264.8, "text": "黒薔薇ノ契リ", "layout": "vcols", "params": {"variant": "repeat", "cols": 1}, "image": pic("j18", cam={"zoom": -0.4}), "enter": "blur", "exit": "blur", "cam": "panR", "scheme": 3},
 ]
 PHASE = {"INTRO": (CALM, FX_CALM), "V1": (CALM, FX_CALM), "P1": (CALM, FX_CALM), "C1": (CALM, FX_CALM), "V2": (COLD, FX_COLD),
          "P2": (COLD, FX_COLD), "C2": (HATE, FX_HATE), "BR": (SPOKEN, FX_SPOKEN), "FC": (HATE, FX_HATE), "OUT": (SPOKEN, FX_SPOKEN)}
-GHOST = {"INTRO": 0, "V1": 0, "P1": 0, "C1": 0, "V2": 0.35, "P2": 0.35, "C2": 0.35, "BR": 0, "FC": 0.35, "OUT": 0}
+GHOST = {"INTRO": 0, "V1": 0, "P1": 0, "C1": 0, "V2": 0, "P2": 0, "C2": 0, "BR": 0, "FC": 0, "OUT": 0}
 ORDER = ["INTRO", "V1", "P1", "C1", "V2", "P2", "C2", "BR", "FC", "OUT"]
 
 def whole_song():
@@ -261,8 +265,14 @@ def section_specs(seed=19):
         spec = {"title": "黒薔薇ノ契リ", "artist": "", "width": 1920, "height": 1080, "fps": 24, "seed": seed + k,
                 "style": style, "fontCandidates": FONTS, "fx": fx,
                 "parts": {"noStrong": True, "allow": pool}, "kit": KIT, "lead": 0.06, "autoTrans": True, "autoEvents": True,
-                "shadeMode": "halo", "imageCam": {"zoom": 0.75, "rot": 0.3, "pan": [12, 0]},
+                "shadeMode": "cloud", "imageCam": {"zoom": 0.75, "rot": 0.3, "pan": [12, 0]},
                 "cuts": sc, "duration": round((round((t1 - t0) * 24) + 0.01) / 24, 6)}   # whole frames, whether AE rounds or floors
+        for ci, sh in (SHIFTS.get(name) or {}).items():      # lyric moved onto a dark part of its picture (tools/jz_contrast.py)
+            ci = int(ci)
+            if ci < len(sc) and sh:
+                sh = dict(sh)
+                if sh.pop('ink', None) == 'dark': sc[ci]['scheme'] = 6
+                if sh.get('x') or sh.get('y') or sh.get('s', 1) != 1: sc[ci]['shift'] = sh
         out[name] = (spec, t0, t1)
     return out, notes
 
@@ -272,6 +282,7 @@ def main():
     ap.add_argument('--sections', default=','.join(ORDER))
     ap.add_argument('--stills', action='store_true')
     ap.add_argument('--render', action='store_true')
+    ap.add_argument('--qa', choices=['mask', 'bare'], help='contrast check pass: stills of the picture cuts only, text green (mask) or hidden (bare)')
     ap.add_argument('--outdir', default=os.path.join(HERE, 'jobs_jz'))
     a = ap.parse_args()
     specs, notes = section_specs()
@@ -283,8 +294,9 @@ def main():
         sp = os.path.join(a.outdir, f"spec_{name}.json")
         json.dump(spec, open(sp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         stills = []
-        if a.stills:
+        if a.stills or a.qa:
             for c in spec['cuts']:
+                if a.qa and not c.get('image'): continue
                 if 'chars' not in c: t = c['start'] + min(1.5, (c['end'] - c['start']) / 2)
                 elif c.get('sync') == 'char': t = c['chars'][-1] + 0.12          # every glyph is in, before the exit
                 else: t = c['readBy'] + 0.1                                     # the whole screen is in by readBy
@@ -293,6 +305,9 @@ def main():
                "params": {"core": CORE, "spec_file": PCDIR + f"\\specs\\{a.id}\\spec_{name}.json", "name": f"KURO_{name}",
                           "audio": WAV, "audio_start": -t0, "stills": stills, "stillMode": "queue",
                           "render": "h264" if a.render else None, "save": f"KURO_{name}.aep"}}
+        if a.qa:
+            job["params"].update({"qa": a.qa, "light": True, "render": None})
+            job["params"].pop("audio"); job["params"].pop("audio_start")
         json.dump(job, open(os.path.join(a.outdir, sid + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         out = f"C:\\AI model\\autopilot\\outbox\\files\\{sid}"
         rj = {"id": sid + "r", "type": "ae_render", "project": out + f"\\KURO_{name}.aep", "timeout": 5400,

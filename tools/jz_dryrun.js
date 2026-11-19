@@ -3,7 +3,7 @@
 // syntax errors and the parts each cut ended up with.
 //
 //   node tools/jz_dryrun.js --jizura <JIZURA checkout> --core <mvjz_core.jsx> --spec <spec.json> [--plan-out plan.json]
-//                           [--fonts all|none|ps1,ps2,...] [--image-size 1600x900]
+//                           [--fonts all|none|ps1,ps2,...] [--image-size 1600x900] [--scale-report 1] [--art-out art.json]
 //
 // Needs acorn for the ES3 syntax check (npm install acorn in a scratch folder, then NODE_PATH=<that>/node_modules).
 // Images are not read: every "image" path is imported as a still of --image-size.
@@ -101,5 +101,43 @@ console.log('layer order check done');
     });
   }
   console.log('sync check: MV Sync animators', syncAnim, '| opacity expressions starting > 0.2 s into the cut', late);
+}
+// --scale-report 1: every animated scale (text animators with Scale, layer Scale expressions, Transform-effect scale),
+// grouped by animator / layer name, so motions that make the lyric grow and shrink can be found and removed.
+if (args['scale-report']) {
+  const hits = new Map(), add = (k, comp) => { const h = hits.get(k) || { n: 0, comps: new Set() }; h.n++; h.comps.add(comp); hits.set(k, h); };
+  const walk = (p, f, path) => { f(p, path); (p.children || []).forEach(ch => walk(ch, f, path.concat([p]))); };
+  for (const c of env.comps) for (const L of c._layers) {
+    walk(L, (p, path) => {
+      if (p.matchName === 'ADBE Text Animator') {
+        let sc = false; walk(p, (q) => { if (q.matchName === 'ADBE Text Scale 3D') sc = true; }, []);
+        if (sc) add('text animator: ' + p.name, c.name);
+      }
+      if (p.matchName === 'ADBE Scale' && p._expr && !/^\s*value\s*;?\s*$/.test(p._expr)) add('layer scale: ' + L.name + ' | ' + p._expr.replace(/\s+/g, ' ').slice(-90), c.name);
+      if (p._effectParam && p._expr && /Scale/i.test(p.name)) {
+        const fx = path[path.length - 1]; add('effect scale: ' + (fx ? fx.name : '?') + ' on ' + L.name, c.name);
+      }
+    }, []);
+  }
+  console.log('scale report', hits.size);
+  [...hits.entries()].sort((a, b) => b[1].n - a[1].n).forEach(([k, h]) => console.log(`  ${String(h.n).padStart(4)} x ${h.comps.size} comps  ${k}  [${[...h.comps].slice(0, 3).join(" / ")}]`));
+}
+// --art-out art.json: where each cut's picture sits (MV Art layer: anchor, scale / position / rotation keys) and when its
+// wrapper starts in the main comp, so tools/jz_contrast.py can rebuild the picture behind the lyric at any time.
+if (args['art-out']) {
+  const xf = (L, mn) => L.property('ADBE Transform Group').property(mn);
+  const kv = (p) => p.keys.length ? { keys: p.keys.map(k => [k.t, k.v]) } : { value: p._v };
+  const arts = [];
+  for (const c of env.comps) for (const L of c._layers) {
+    const m = /^(\d{3}) /.exec(L.name);
+    if (!m || !L.source || !L.source._layers) continue;
+    const A = L.source._layers.find(x => x.name === 'MV Art');
+    if (!A) continue;
+    arts.push({ cut: +m[1] - 1, wrapStart: L._startTime, wrapScale: xf(L, 'ADBE Scale')._v, wrapPos: xf(L, 'ADBE Position')._v,
+      path: A.source && A.source.file ? A.source.file.fsName : null, iw: A.source ? A.source.width : null, ih: A.source ? A.source.height : null,
+      anchor: xf(A, 'ADBE Anchor Point')._v, scale: kv(xf(A, 'ADBE Scale')), position: kv(xf(A, 'ADBE Position')),
+      rotation: kv(xf(A, 'ADBE Rotate Z')), opacity: xf(A, 'ADBE Opacity')._v });
+  }
+  fs.writeFileSync(args['art-out'], JSON.stringify(arts, null, 1)); console.log('art written to', args['art-out'], arts.length);
 }
 if (args['plan-out']) { fs.writeFileSync(args['plan-out'], JSON.stringify(plan, null, 1)); console.log('plan written to', args['plan-out']); }

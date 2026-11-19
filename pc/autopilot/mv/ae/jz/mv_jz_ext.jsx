@@ -14,7 +14,7 @@
 //   * a "kit": decor parts with fixed parameters repeated on every cut (one look across the song).
 // Spec format: see pc/autopilot/mv/ae/jz/README.md.
 
-var MVJZ_VERSION = '0.1.5';
+var MVJZ_VERSION = '0.1.6';
 var MVJZ_IMG = {};
 
 function mvJzIsArr(o) { return Object.prototype.toString.call(o) === '[object Array]'; }
@@ -239,6 +239,7 @@ function mvJzPlan(spec) {
         }
         c.mvImage = sc.image || null;
         c.mvShade = sc.shade != null ? sc.shade : (spec.shade != null ? spec.shade : null);
+        c.mvShift = sc.shift || null;
         plan.cuts.push(c);
         if (c.line >= 0 && line !== prevLine) plan.lines.push({ index: plan.lines.length, text: c.lineText, start: start, end: end, visEnd: end, note: c.note, impact: !!sc.impact });
         else if (c.line >= 0 && plan.lines.length) { var PL = plan.lines[plan.lines.length - 1]; PL.end = end; PL.visEnd = end; }
@@ -558,19 +559,34 @@ function mvJzPlaceImage(wc, cut, sc, W, H, spec) {
     if (im.opacity != null) jzXf(L, 'ADBE Opacity').setValue(im.opacity);
     // shade between picture and lyric (rule 2026-11-18: the picture stays clear, only the area under the lyric darkens).
     //   "halo" (default): a blurred, filled copy of the cut's lyric under it, dark under light text and light under dark
-    //   "full": a solid over the whole picture. shade = number (opacity) | { mode, color, opacity, blur (px at 1080) } | false
+    //   "cloud": the same, but from the lyric alone (no decor), spread first (2 x Simple Choker) and blurred wider, so the
+    //            whole line sits in a soft shade (v2 of 黒薔薇: the halo left 10-40 % of the lyric on light background)
+    //   "full": a solid over the whole picture. shade = number (opacity) | { mode, color, opacity, blur, spread (px at 1080) } | false
     var sh = cut.mvShade, light = jzLum(sc.fg) > 0.5;
     if (sh !== false && sh !== 0) {
-        var so = sh && typeof sh === 'object' ? sh : {}, mode = so.mode || spec.shadeMode || 'halo';
+        var so = sh && typeof sh === 'object' ? sh : {}, mode = so.mode || spec.shadeMode || 'halo', cl = mode === 'cloud';
         var col = so.color || (light ? '#000000' : '#ffffff');
-        var op = typeof sh === 'number' ? sh : (so.opacity != null ? so.opacity : (mode === 'halo' ? (light ? 75 : 70) : (light ? 32 : 30)));
-        var CL = mode === 'halo' ? mvJzFindLayer(wc, 'content') : null;
+        var op = typeof sh === 'number' ? sh : (so.opacity != null ? so.opacity : (cl ? (light ? 80 : 70) : mode === 'halo' ? (light ? 75 : 70) : (light ? 32 : 30)));
+        var CL = mode === 'halo' || cl ? mvJzFindLayer(wc, 'content') : null;
         if (CL) {
             var HL = CL.duplicate();
             HL.name = 'MV Halo';
             HL.moveBefore(L);
+            if (cl) {
+                try {          // the lyric without the decor layers (MV_DECOR): corners and running heads get no cloud
+                    var hs = CL.source.duplicate(), hi;
+                    hs.name = CL.source.name + ' halo';
+                    try { hs.parentFolder = CL.source.parentFolder; } catch (ef) {}
+                    for (hi = 1; hi <= hs.numLayers; hi++) if (mvJzHasTag(hs.layer(hi), 'MV_DECOR')) hs.layer(hi).enabled = false;
+                    HL.replaceSource(hs, false);
+                } catch (eh) { mvJzWarn('cut ' + (cut.index + 1) + ' cloud source: ' + eh.toString()); }
+            }
             var fe = jzEffect(HL, 'ADBE Fill', 'MV Halo Fill'); jzEP(fe, 3, jzHex(col)); jzEP(fe, 7, 1);
-            var bl = jzEffect(HL, 'ADBE Gaussian Blur 2', 'MV Halo Blur'); jzEP(bl, 1, (so.blur != null ? so.blur : 46) * H / 1080); jzEP(bl, 3, 0);
+            if (cl) {
+                var sp = (so.spread != null ? so.spread : 24) * H / 1080;
+                for (var ci2 = 0; ci2 < 2; ci2++) { var ch = jzEffect(HL, 'ADBE Simple Choker', 'MV Cloud Spread ' + (ci2 + 1)); jzEP(ch, 2, -sp / 2); }
+            }
+            var bl = jzEffect(HL, 'ADBE Gaussian Blur 2', 'MV Halo Blur'); jzEP(bl, 1, (so.blur != null ? so.blur : (cl ? 70 : 46)) * H / 1080); jzEP(bl, 3, 0);
             jzXf(HL, 'ADBE Opacity').setValue(op);
         } else {
             var SL = wc.layers.addSolid(jzHex(col), 'MV Shade', W, H, 1, dur);
@@ -581,10 +597,45 @@ function mvJzPlaceImage(wc, cut, sc, W, H, spec) {
     if (im.keepPaper === false) { var pp = mvJzFindLayer(wc, 'JZ Paper'); if (pp) pp.enabled = false; }
     return L;
 }
+// shift = { x, y, s }: moves the cut's lyric (its camera null, so the content, its ghosts and the halo made from it) by
+// x * W and y * H and scales it by s (static, before the camera's own moves). Used to put a line on a dark part of the
+// picture instead of darkening the picture under it (rule 2026-11-13: no black rims; move the lyric to a dark area).
+// Only the lyric and the parts built on it move: the decor (kit corners, running head, petals...) stays where the
+// layout put it. jzDecorate is wrapped so the layers it adds carry the tag MV_DECOR in their comment (JIZURA keeps its
+// own tags there too, e.g. JZ_NOGHOST, and reads them with indexOf: tags are appended, never replaced).
+function mvJzTag(L, tag) { try { var c = String(L.comment || ''); if (c.indexOf(tag) < 0) L.comment = (c ? c + ' ' : '') + tag; } catch (e) {} }
+function mvJzHasTag(L, tag) { try { return String(L.comment || '').indexOf(tag) >= 0; } catch (e) { return false; } }
+var mvJzDecorate0 = jzDecorate;
+jzDecorate = function (ctx, bb) {
+    var C = ctx.comp, i;
+    for (i = 1; i <= C.numLayers; i++) mvJzTag(C.layer(i), 'MV_PRE');
+    var r = mvJzDecorate0(ctx, bb);
+    for (i = 1; i <= C.numLayers; i++) if (!mvJzHasTag(C.layer(i), 'MV_PRE')) mvJzTag(C.layer(i), 'MV_DECOR');
+    return r;
+};
+function mvJzShift(wc, cut, W, H) {
+    var sh = cut.mvShift, CL = mvJzFindLayer(wc, 'content'), pc = CL ? CL.source : null;
+    if (!pc || pc.numLayers == null) { mvJzWarn('cut ' + (cut.index + 1) + ': no content comp in the wrapper; shift skipped'); return false; }
+    try {
+        var CW = pc.width, CH = pc.height, nl = pc.layers.addNull(pc.duration), n = 0, i, L;
+        nl.name = 'MV Shift'; mvJzTag(nl, 'MV_SHIFT');
+        jzXf(nl, 'ADBE Anchor Point').setValue([CW / 2, CH / 2]); jzXf(nl, 'ADBE Position').setValue([CW / 2, CH / 2]);
+        for (i = 1; i <= pc.numLayers; i++) {
+            L = pc.layer(i);
+            if (L.index === nl.index || mvJzHasTag(L, 'MV_DECOR') || mvJzHasTag(L, 'MV_SHIFT') || L.parent || L.adjustmentLayer) continue;
+            L.parent = nl; n++;
+        }
+        jzXf(nl, 'ADBE Position').setValue([CW / 2 + (sh.x || 0) * W, CH / 2 + (sh.y || 0) * H]);
+        if (sh.s != null && sh.s !== 1) jzXf(nl, 'ADBE Scale').setValue([100 * sh.s, 100 * sh.s]);
+        if (!n) mvJzWarn('cut ' + (cut.index + 1) + ': shift found no lyric layers');
+    } catch (e) { mvJzWarn('cut ' + (cut.index + 1) + ' shift: ' + e.toString()); return false; }
+    return true;
+}
 function mvJzPost(comp, plan, spec) {
     var wr = mvJzWrappers(comp), n = 0, i, W = plan.width, H = plan.height;
     for (i = 0; i < plan.cuts.length; i++) {
         var c = plan.cuts[i];
+        if (c.mvShift && wr[i]) mvJzShift(wr[i].comp, c, W, H);
         if (!c.mvImage) continue;
         if (!wr[i]) { mvJzWarn('cut ' + (i + 1) + ': wrapper comp not found; image skipped'); continue; }
         var sc = plan.style.schemes[(c.scheme || 0) % plan.style.schemes.length];
