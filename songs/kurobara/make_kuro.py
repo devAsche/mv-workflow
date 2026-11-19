@@ -45,10 +45,10 @@ FONTS = {"mincho_black": ["ZenOldMincho-Black", "ZenOldMincho-Bold"], "shippori"
 # ---------------------------------------------------------------- part pools per phase (the pickers choose inside these)
 CALM = {
  "layout": ["vcols", "mixed", "center", "quote", "justified", "tyRuby"],
- "enter": ["blur", "fadeStagger", "brushReveal", "glint", "hrManifest", "hzAlreadyThere", "strokeDraw"],
+ "enter": ["blur", "brushReveal", "glint", "hrManifest", "hzAlreadyThere", "strokeDraw"],
  "exit": ["drift", "blur", "wzHanaChiru", "xjFocusPull", "xjStepFade", "hzOutOfLight", "wzSumiNijimi"],
- "hold": ["float", "shadowSway", "hzPresence", "noiseDrift", "sway", "still"],
- "treat": ["none", "glow", "fadeChars"],
+ "hold": ["float", "shadowSway", "noiseDrift", "sway", "still"],
+ "treat": ["none", "glow"],
  "cam": ["panL", "panR", "tiltUp", "xqDriftTurn"],
  "trans": ["xqSoftSweep", "inkBlob"],
  "decor": ["petals", "tyRunningHead", "risingParticles"],
@@ -58,9 +58,9 @@ CALM = {
 COLD = copy.deepcopy(CALM)
 COLD.update({
  "layout": ["vcols", "mixed", "stack", "condensed", "quote"],
- "enter": ["slice", "blur", "scramble", "printRegister", "hzShakyHand", "flicker", "hzUnwatched", "hzLateSnap"],
+ "enter": ["slice", "blur", "scramble", "printRegister", "hzShakyHand", "hzUnwatched", "hzLateSnap"],
  "exit": ["glitch", "drift", "xiRedact", "burn", "hrShiver", "xjColourDrain"],
- "hold": ["noiseDrift", "shadowSway", "hrLagOne", "hzPassing", "hzLoneTremor", "hzPresence"],
+ "hold": ["noiseDrift", "shadowSway", "hrLagOne", "hzLoneTremor"],
  "treat": ["none", "strike", "hrRedact", "boxed", "hzColdRim"],
  "decor": ["petals", "tyRunningHead", "hrScratches", "hzFilmDirt"],
  "trans": ["xqSoftSweep", "sliceShift", "hrBlink", "inkBlob"],
@@ -72,9 +72,9 @@ COLD.update({
 HATE = copy.deepcopy(COLD)
 HATE.update({
  "layout": ["stack", "mixed", "condensed", "vcols", "center"],
- "enter": ["slice", "scramble", "hrManifest", "printRegister", "hrUneasy", "hrClawReveal", "hzLampSweep", "flicker"],
+ "enter": ["slice", "scramble", "hrManifest", "printRegister", "hrUneasy", "hrClawReveal", "hzLampSweep"],
  "exit": ["glitch", "burn", "scorchOut", "wzHanaChiru", "explode", "hrShiver"],
- "hold": ["noiseDrift", "hrLagOne", "hzLoneTremor", "hrFlickerLight", "hzPassing", "shadowSway"],
+ "hold": ["noiseDrift", "hrLagOne", "hzLoneTremor", "shadowSway"],
  "treat": ["none", "hrInkBleed", "strike", "glow", "hrEroded"],
  "decor": ["hrCracks", "petals", "hrScratches"],
  "trans": ["sliceShift", "hrBlink", "inkBlob", "flashCross"],
@@ -85,10 +85,10 @@ HATE.update({
 SPOKEN = copy.deepcopy(CALM)
 SPOKEN.update({
  "layout": ["letterPaper", "quote", "vcols", "center"],
- "enter": ["hzShakyHand", "hzAlreadyThere", "fadeStagger", "blur"],
+ "enter": ["hzShakyHand", "hzAlreadyThere", "blur"],
  "exit": ["drift", "wzSumiNijimi", "blur", "hzOutOfLight"],
- "hold": ["float", "hzPresence", "still", "shadowSway"],
- "treat": ["none", "fadeChars", "hzUneven"],
+ "hold": ["float", "still", "shadowSway"],
+ "treat": ["none", "hzUneven"],
  "decor": ["petals", "tyRunningHead"],
  "trans": ["xqSoftSweep", "hrBlink"],
  "cam": ["panL", "panR", "tiltUp", "xqDriftTurn"],

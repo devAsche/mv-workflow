@@ -14,7 +14,7 @@
 //   * a "kit": decor parts with fixed parameters repeated on every cut (one look across the song).
 // Spec format: see pc/autopilot/mv/ae/jz/README.md.
 
-var MVJZ_VERSION = '0.1.6';
+var MVJZ_VERSION = '0.1.7';
 var MVJZ_IMG = {};
 
 function mvJzIsArr(o) { return Object.prototype.toString.call(o) === '[object Array]'; }
@@ -219,6 +219,8 @@ function mvJzPlan(spec) {
                 else if (spec.autoTrans !== false && dur > 0.5) trans = jzPickTrans(rng, st, en, fx, emph, hist);
                 if (trans) {
                     transDur = sc.transDur != null ? sc.transDur : jzClamp(jzMeta('trans', trans).dur || 0.35, 0.12, Math.min(0.6, dur * 0.45));
+                    // the new screen is uncovered by readBy: a wipe still running when the voice starts hides part of the line
+                    if (sc.transDur == null && sc.readBy != null && transDur > sc.readBy - start) transDur = Math.max(0.12, sc.readBy - start);
                     transP = mvJzMerge(jzPlanOf('trans', trans, rng, st), sc.transP || null);
                     enter = 'cut'; inDur = 0.12; prevCut.exit = 'cut'; prevCut.outDur = 0;
                 }

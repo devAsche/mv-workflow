@@ -15,8 +15,8 @@ shade MVJZ puts under the lyric is the "cloud" (shadeMode "cloud": the lyric's s
 --blur, black at --opacity % under light text, white at 70 % under dark text). On the lyric plus a 6 px rim:
   bad   share whose shaded background is too close to the text: light text over luminance 110, dark text under 125
         (about 4:1 contrast either way)
-A cut passes when bad <= 2 %. Otherwise, in this order: the same place in dark ink (when dark ink reads there at
-<= 2 %, or at <= 4 % when the line sits mostly on a bright part: median background > 120), then other places (x, y in frame fractions, scale 1 / 0.86 / 0.74, inside a 48 px margin) in
+A cut passes when bad <= 3 %. Otherwise, in this order: the same place in dark ink (when dark ink reads there at
+<= 3 %, or at <= 4 % when the line sits mostly on a bright part: median background > 120), then other places (x, y in frame fractions, scale 1 / 0.86 / 0.74, inside a 48 px margin) in
 light or dark ink, least bad first, then the smallest change. Suggestions go to --shifts-out as
 {SECTION: {cut index: {"x", "y", "s", "ink"}}}, which songs/*/make_*.py turn into the spec cut's "shift" (MVJZ 0.1.6)
 and, for "ink": "dark", the dark-ink scheme.
@@ -31,6 +31,7 @@ W, H = 1920, 1080
 DS = 4                       # the place search runs on a 480 x 270 grid
 MARGIN = 48
 LIGHT_MAX, DARK_MIN = 110, 125
+PASS = 0.03                  # share of the lyric allowed on too light (too dark) background
 DARK_INK = '#141018'
 
 
@@ -223,9 +224,9 @@ def main():
         choice = None
         if dark_now:
             choice = ('keep (dark scheme)', {}, True, bad_d)
-        elif bad_l <= 0.02 and not (med > 120 and bad_d < bad_l):
+        elif bad_l <= PASS and not (med > 120 and bad_d < bad_l):
             choice = ('ok', {}, False, bad_l)
-        elif bad_d <= 0.02 or (med > 120 and bad_d <= 0.04):
+        elif bad_d <= PASS or (med > 120 and bad_d <= 0.04):
             choice = ('dark ink', {'ink': 'dark'}, True, bad_d)
         else:
             b = search(mask, Ls, sh)
@@ -233,7 +234,7 @@ def main():
                 d = {'x': b[1], 'y': b[2], 's': b[3]}
                 if b[4]:
                     d['ink'] = 'dark'
-                choice = (('move' if b[5] <= 0.02 else 'BEST ONLY') + ' x %+.2f y %+.2f s %.2f%s' % (b[1], b[2], b[3], ' dark ink' if b[4] else ''), d, b[4], b[5])
+                choice = (('move' if b[5] <= PASS else 'BEST ONLY') + ' x %+.2f y %+.2f s %.2f%s' % (b[1], b[2], b[3], ' dark ink' if b[4] else ''), d, b[4], b[5])
             else:
                 choice = ('NO PLACE', {}, False, bad_l)
         row += '  -> %s (bad %.1f%%)' % (choice[0], choice[3] * 100)
