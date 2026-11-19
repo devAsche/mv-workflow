@@ -13,3 +13,5 @@ lyrics*.txt
 node_modules/
 out/
 __pycache__/
+# built from JIZURA (MIT) + mv_jz_ext.jsx; rebuild with build_mvjz.py
+mvjz_core.jsx

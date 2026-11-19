@@ -1,0 +1,27 @@
+{
+ "title": "テスト",
+ "artist": "mv-workflow",
+ "width": 1920, "height": 1080, "fps": 24, "seed": 7,
+ "style": "paper",
+ "styleOverride": {"fonts": {"display": ["zenkaku", "dela"], "serif": ["mincho_black"], "body": ["gothic_med"]}},
+ "fontCandidates": {"gothic_med": ["ZenKakuGothicNew-Medium"], "gothic_black": ["ZenKakuGothicNew-Black"]},
+ "fx": {"motion": 0.5, "glitch": 0.2, "decor": 0.5},
+ "parts": {"tags": ["calm", "editorial", "emotional"], "noStrong": true,
+   "allow": {"cam": ["push", "pullOut", "panL", "panR", "driftDiag", "dollyIn", "floatNoise", "focusIn", "tiltUp", "tiltDown", "xqArcSweep", "xqPushPull", "xqDriftTurn", "xqCraneUp", "tzMeasureZoom"]}},
+ "kit": ["cropMarks", {"id": "indexNum", "corner": true}],
+ "shade": 28,
+ "cuts": [
+  {"kind": "title", "start": 0.2, "end": 2.0},
+  {"text": "一行目のテスト", "start": 2.0, "end": 3.6, "line": 0, "layout": "center", "enter": "blur", "exit": "cut",
+   "image": {"path": "C:\\\\AI model\\\\autopilot\\\\work\\\\mv\\\\test\\\\art_a.png", "focus": [0.4, 0.5]}},
+  {"text": "二つ目 の言葉", "start": 3.6, "end": 5.4, "line": 1, "sync": "word",
+   "chars": [3.6, 3.8, 4.0, 4.5, 4.7, 4.9],
+   "image": {"path": "C:\\\\AI model\\\\autopilot\\\\work\\\\mv\\\\test\\\\art_a.png", "cam": {"zoom": -0.75}}},
+  {"text": "ひとつずつ", "start": 5.4, "end": 7.0, "line": 2, "layout": "center", "sync": "char", "syncStyle": "pop",
+   "chars": [5.4, 5.65, 5.9, 6.15, 6.4], "decor": ["brackets"], "emph": true, "impact": true},
+  {"text": "大きく見せる", "start": 7.0, "end": 8.4, "line": 3, "layout": "huge", "trans": "wipe", "treat": "underline"},
+  {"kind": "interlude", "start": 8.4, "end": 10.0, "params": {"variant": "counter"}},
+  {"text": "最後の行", "start": 10.0, "end": 11.6, "line": 4}
+ ],
+ "events": [{"t": 7.0, "type": "flash"}]
+}
