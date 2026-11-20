@@ -208,7 +208,8 @@ CUTS = [
  # OUT 4:03-4:25  whisper: the flower's words; the last line in crimson; the title
  {"sec": "OUT"},
  L(72, layout="center", enter="blur", exit="drift", scheme=5, start=243.3),
- L(73, layout="center", enter="blur", exit="drift", scheme=5),
+ # 永遠の愛。 comes after a 2.6 s rest: switch 0.4 s before the voice as well (凌さん 2026-11-20 18:17)
+ L(73, layout="center", enter="blur", exit="drift", scheme=5, start=248.62),
  # "そして……" comes after a 2.4 s rest: switch late (0.4 s before the voice) so the line is not up long before it is
  # whispered (凌さん 2026-11-20); 永遠の愛。 stays through the rest
  L(74, layout="center", enter="blur", exit="drift", scheme=5, start=252.95),
