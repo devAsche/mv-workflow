@@ -14,7 +14,7 @@
 //   * a "kit": decor parts with fixed parameters repeated on every cut (one look across the song).
 // Spec format: see pc/autopilot/mv/ae/jz/README.md.
 
-var MVJZ_VERSION = '0.1.8';
+var MVJZ_VERSION = '0.1.9';
 var MVJZ_IMG = {};
 
 function mvJzIsArr(o) { return Object.prototype.toString.call(o) === '[object Array]'; }
@@ -242,6 +242,7 @@ function mvJzPlan(spec) {
         c.mvImage = sc.image || null;
         c.mvShade = sc.shade != null ? sc.shade : (spec.shade != null ? spec.shade : null);
         c.mvShift = sc.shift || null;
+        c.mvBlood = sc.blood || null;
         plan.cuts.push(c);
         if (c.line >= 0 && line !== prevLine) plan.lines.push({ index: plan.lines.length, text: c.lineText, start: start, end: end, visEnd: end, note: c.note, impact: !!sc.impact });
         else if (c.line >= 0 && plan.lines.length) { var PL = plan.lines[plan.lines.length - 1]; PL.end = end; PL.visEnd = end; }
@@ -634,11 +635,52 @@ function mvJzShift(wc, cut, W, H) {
     } catch (e) { mvJzWarn('cut ' + (cut.index + 1) + ' shift: ' + e.toString()); return false; }
     return true;
 }
+// blood = { dir: folder of tools/blood_split.py output, meta: its blood.json, t0: seconds the blood has already been
+//   running when the cut starts (continues it across cuts), speed: 1, seed: 0, bandIn: 0.9 (s), spread: 1.4 (s of start
+//   delays between the drips) }. Painted blood (H3 picture split into a band along the top edge and one strip per drip)
+//   seeps in from the top and each drip slides down at its own pace, slowing like a thick liquid; the strips are clipped
+//   just under the band so they come out of it. Sits under the lyric, over the picture and its shade.
+function mvJzBlood(wc, cut, W, H) {
+    var B = cut.mvBlood, M = B.meta, k = W / (M.W || 1920), t0 = B.t0 || 0, dur = wc.duration + t0, i;
+    var dir = String(B.dir).replace(/[\\\/]+$/, '') + '\\';
+    var rng = new JzRng(jzHash(cut.seed, 'blood', B.seed || 0));
+    var bc = app.project.items.addComp('MV Blood ' + (cut.index + 1), W, H, 1, dur, wc.frameRate);
+    var dc = app.project.items.addComp('MV Blood drips ' + (cut.index + 1), W, H, 1, dur, wc.frameRate);
+    try { bc.parentFolder = wc.parentFolder; dc.parentFolder = wc.parentFolder; } catch (ef) {}
+    var bandH = M.band.h * k, sp = B.speed || 1, spread = B.spread != null ? B.spread : 1.4, bandIn = B.bandIn != null ? B.bandIn : 0.9;
+    function addPng(C, file) {
+        var L = C.layers.add(mvJzImport(dir + file));
+        jzXf(L, 'ADBE Anchor Point').setValue([0, 0]); jzXf(L, 'ADBE Position').setValue([0, 0]); jzXf(L, 'ADBE Scale').setValue([100 * k, 100 * k]);
+        try { L.startTime = 0; L.outPoint = dur; } catch (eo) {}
+        return L;
+    }
+    for (i = 0; i < M.drips.length; i++) {
+        var d = M.drips[i], L = addPng(dc, d.file), len = (d.len + 24) * k;
+        var dl = bandIn * 0.5 + rng.range(0, spread), T = (1.6 + d.len * k / H * 5.5) / sp * rng.range(0.8, 1.25);
+        // p: progress of the slide; it starts slow (the drop swells), runs, and creeps to a stop
+        jzSetExpr(jzXf(L, 'ADBE Position'), 'var p=Math.max(0,Math.min(1,(time-' + jzN(dl) + ')/' + jzN(T) + '));' +
+            'var f=1-Math.pow(1-Math.pow(p,1.35),2.4);[value[0],value[1]-' + jzN(len) + '*(1-f)]');
+        L.name = 'drip ' + (i + 1);
+    }
+    var DL = bc.layers.add(dc); DL.name = 'drips';
+    // clip the strips just under the band (the mask stays put while the strips slide)
+    var mk = DL.property('ADBE Mask Parade').addProperty('ADBE Mask Atom'), sh = new Shape(), y0 = Math.max(0, bandH - 22 * k);
+    sh.vertices = [[0, y0], [W, y0], [W, H], [0, H]]; sh.closed = true;
+    mk.property('ADBE Mask Shape').setValue(sh); mk.property('ADBE Mask Feather').setValue([0, 10 * k]);
+    var BL = addPng(bc, M.band.file); BL.name = 'band';
+    jzSetExpr(jzXf(BL, 'ADBE Position'), 'var p=Math.max(0,Math.min(1,time/' + jzN(bandIn) + '));var f=1-Math.pow(1-p,2.2);[value[0],value[1]-' + jzN(bandH * 1.15) + '*(1-f)]');
+    var WL = wc.layers.add(bc); WL.name = 'MV Blood';
+    try { WL.startTime = -t0; WL.inPoint = 0; WL.outPoint = wc.duration; } catch (e2) {}
+    var CL = mvJzFindLayer(wc, 'content');
+    if (CL) WL.moveAfter(CL);
+    return WL;
+}
 function mvJzPost(comp, plan, spec) {
     var wr = mvJzWrappers(comp), n = 0, i, W = plan.width, H = plan.height;
     for (i = 0; i < plan.cuts.length; i++) {
         var c = plan.cuts[i];
         if (c.mvShift && wr[i]) mvJzShift(wr[i].comp, c, W, H);
+        if (c.mvBlood && wr[i]) { try { mvJzBlood(wr[i].comp, c, W, H); } catch (eb) { mvJzWarn('cut ' + (i + 1) + ' blood: ' + eb.toString() + (eb.line ? ' (line ' + eb.line + ')' : '')); } }
         if (!c.mvImage) continue;
         if (!wr[i]) { mvJzWarn('cut ' + (i + 1) + ': wrapper comp not found; image skipped'); continue; }
         var sc = plan.style.schemes[(c.scheme || 0) % plan.style.schemes.length];

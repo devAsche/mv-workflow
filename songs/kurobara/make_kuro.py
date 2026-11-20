@@ -233,6 +233,14 @@ def whole_song():
     spec, notes = jz_spec.make(cfg)
     return spec['cuts'], secs, notes
 
+# painted blood running down from the top edge (H3 picture split by tools/blood_split.py, MVJZ 0.1.9 "blood"), only
+# where the hate breaks through: section -> {cut index: (run, set)}; cuts of one run continue the same blood
+BLOOD = {"C2": {4: ("c2", "b1a"), 5: ("c2", "b1a"), 6: ("c2", "b1a")},
+         "FC": {6: ("fc7", "b1b"), 9: ("fc10", "b1b")}}
+
+def blood_of(setname):
+    return json.load(open(os.path.join(HERE, 'blood', setname, 'blood.json'), encoding='utf-8'))
+
 def section_specs(seed=19):
     allc, secs, notes = whole_song()
     # jz_spec sorts by start; map back by order (all starts increase in CUTS order)
@@ -273,6 +281,13 @@ def section_specs(seed=19):
                 sh = dict(sh)
                 if sh.pop('ink', None) == 'dark': sc[ci]['scheme'] = 6
                 if sh.get('x') or sh.get('y') or sh.get('s', 1) != 1: sc[ci]['shift'] = sh
+        runs = {}
+        for ci, (run, setname) in sorted((BLOOD.get(name) or {}).items()):
+            if ci >= len(sc): continue
+            r0 = runs.setdefault(run, sc[ci]['start'])
+            meta = blood_of(setname); meta.pop('src', None)
+            sc[ci]['blood'] = {"dir": PCDIR + "\\blood\\" + setname, "meta": meta, "t0": round(sc[ci]['start'] - r0, 3),
+                               "seed": sum(map(ord, run))}
         out[name] = (spec, t0, t1)
     return out, notes
 
