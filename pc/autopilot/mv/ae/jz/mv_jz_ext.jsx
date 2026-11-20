@@ -14,7 +14,7 @@
 //   * a "kit": decor parts with fixed parameters repeated on every cut (one look across the song).
 // Spec format: see pc/autopilot/mv/ae/jz/README.md.
 
-var MVJZ_VERSION = '0.1.9';
+var MVJZ_VERSION = '0.1.10';
 var MVJZ_IMG = {};
 
 function mvJzIsArr(o) { return Object.prototype.toString.call(o) === '[object Array]'; }
@@ -671,6 +671,7 @@ function mvJzBlood(wc, cut, W, H) {
     jzSetExpr(jzXf(BL, 'ADBE Position'), 'var p=Math.max(0,Math.min(1,time/' + jzN(bandIn) + '));var f=1-Math.pow(1-p,2.2);[value[0],value[1]-' + jzN(bandH * 1.15) + '*(1-f)]');
     var WL = wc.layers.add(bc); WL.name = 'MV Blood';
     try { WL.startTime = -t0; WL.inPoint = 0; WL.outPoint = wc.duration; } catch (e2) {}
+    if (B.flip) jzXf(WL, 'ADBE Scale').setValue([-100, 100]);   // mirrored, so a second use of one painting reads as new drips
     var CL = mvJzFindLayer(wc, 'content');
     if (CL) WL.moveAfter(CL);
     return WL;

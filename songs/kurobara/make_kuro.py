@@ -235,8 +235,11 @@ def whole_song():
 
 # painted blood running down from the top edge (H3 picture split by tools/blood_split.py, MVJZ 0.1.9 "blood"), only
 # where the hate breaks through: section -> {cut index: (run, set)}; cuts of one run continue the same blood
+# 0-based cut index -> (run, blood set[, opts]). Cuts of one run share one continuous drip.
+# opts: pre = seconds the drip has already run at the cut's start (a short cut otherwise ends
+# before the drops get going), flip = mirrored so a second use of a painting reads as new drips.
 BLOOD = {"C2": {4: ("c2", "b1a"), 5: ("c2", "b1a"), 6: ("c2", "b1a")},
-         "FC": {6: ("fc7", "b1b"), 9: ("fc10", "b1b")}}
+         "FC": {6: ("fc7", "b1a", {"pre": 2.4, "flip": True}), 9: ("fc10", "b1b", {"pre": 1.6})}}
 
 def blood_of(setname):
     return json.load(open(os.path.join(HERE, 'blood', setname, 'blood.json'), encoding='utf-8'))
@@ -282,12 +285,14 @@ def section_specs(seed=19):
                 if sh.pop('ink', None) == 'dark': sc[ci]['scheme'] = 6
                 if sh.get('x') or sh.get('y') or sh.get('s', 1) != 1: sc[ci]['shift'] = sh
         runs = {}
-        for ci, (run, setname) in sorted((BLOOD.get(name) or {}).items()):
+        for ci, ent in sorted((BLOOD.get(name) or {}).items()):
             if ci >= len(sc): continue
+            run, setname, opt = (tuple(ent) + ({},))[:3]
             r0 = runs.setdefault(run, sc[ci]['start'])
             meta = blood_of(setname); meta.pop('src', None)
-            sc[ci]['blood'] = {"dir": PCDIR + "\\blood\\" + setname, "meta": meta, "t0": round(sc[ci]['start'] - r0, 3),
-                               "seed": sum(map(ord, run))}
+            sc[ci]['blood'] = {"dir": PCDIR + "\\blood\\" + setname, "meta": meta,
+                               "t0": round(sc[ci]['start'] - r0 + opt.get('pre', 0), 3), "seed": sum(map(ord, run))}
+            if opt.get('flip'): sc[ci]['blood']['flip'] = True
         out[name] = (spec, t0, t1)
     return out, notes
 
