@@ -14,7 +14,7 @@
 //   * a "kit": decor parts with fixed parameters repeated on every cut (one look across the song).
 // Spec format: see pc/autopilot/mv/ae/jz/README.md.
 
-var MVJZ_VERSION = '0.1.11';
+var MVJZ_VERSION = '0.1.12';
 var MVJZ_IMG = {};
 
 function mvJzIsArr(o) { return Object.prototype.toString.call(o) === '[object Array]'; }
@@ -722,12 +722,60 @@ function mvJzPost(comp, plan, spec) {
     return { images: n };
 }
 
+// credits = [{ start, end (section seconds), rows: [[role, name], ...], x, y (where the block sits, 0..1 of the frame; with
+//   align 'right' x is the right end of the names, 'left' the left end of the roles, 'center' the gutter), size (name height
+//   / H, 0.026), labelScale (0.62), lead (row pitch / name size, 1.75), labelFont / valueFont (font keys, 'mono' / 'body'),
+//   labelColor / valueColor (default: sub / fg of the scheme of the cut at start), labelTrack / valueTrack, fadeIn (1.2 s),
+//   fadeOut (0.6 s), stagger (s between rows, 0.3), rise (px the row drifts up while it fades in, 0.006 * H) }].
+// Credits sit on top of the section comp and stay put on the frame (the camera does not move them): each row is a small
+// role in the label font, right-aligned, then the name after a narrow gutter. They fade and settle; nothing grows or shrinks.
+function mvJzCredits(comp, plan, spec) {
+    var list = spec.credits, n = 0, W = plan.width, H = plan.height, i, j;
+    if (!list) return 0;
+    if (!(list instanceof Array)) list = [list];
+    function cutAt(t) { for (var k = 0; k < plan.cuts.length; k++) if (t >= plan.cuts[k].start && t < plan.cuts[k].end) return plan.cuts[k]; return plan.cuts[0]; }
+    for (i = 0; i < list.length; i++) {
+        var cr = list[i], rows = cr.rows || [];
+        if (!rows.length) continue;
+        try {
+            var t0 = +cr.start || 0, t1 = cr.end != null ? +cr.end : comp.duration;
+            var fi = cr.fadeIn != null ? +cr.fadeIn : 1.2, fo = cr.fadeOut != null ? +cr.fadeOut : 0.6, st = cr.stagger != null ? +cr.stagger : 0.3;
+            var c0 = cutAt(t0), sc = plan.style.schemes[((c0 && c0.scheme) || 0) % plan.style.schemes.length];
+            var fs = (cr.size || 0.026) * H, ls = fs * (cr.labelScale || 0.62), rowH = fs * (cr.lead || 1.75), gut = fs * 0.9;
+            var rise = cr.rise != null ? +cr.rise : 0.006 * H;
+            var ctx = { comp: comp, roles: null, cut: {}, W: W, H: H };
+            var labs = [], vals = [], wL = 0, wV = 0;
+            for (j = 0; j < rows.length; j++) {
+                var Lb = jzText(ctx, String(rows[j][0]), { font: cr.labelFont || 'mono', size: ls, color: cr.labelColor || sc.sub, align: 'right', track: cr.labelTrack != null ? cr.labelTrack : 0.24, x: 0, y: 0, name: 'MV Credit role ' + (j + 1) });
+                var Lv = jzText(ctx, String(rows[j][1]), { font: cr.valueFont || 'body', size: fs, color: cr.valueColor || sc.fg, align: 'left', track: cr.valueTrack != null ? cr.valueTrack : 0.06, x: 0, y: 0, name: 'MV Credit name ' + (j + 1) });
+                labs.push(Lb); vals.push(Lv);
+                wL = Math.max(wL, jzSize(Lb)[0]); wV = Math.max(wV, jzSize(Lv)[0]);
+            }
+            var ax = (cr.x != null ? cr.x : 0.93) * W, ay = (cr.y != null ? cr.y : 0.82) * H, al = cr.align || 'right';
+            var xg = al === 'right' ? ax - wV - gut / 2 : (al === 'left' ? ax + wL + gut / 2 : ax);   // centre of the gutter
+            for (j = 0; j < rows.length; j++) {
+                var y = ay + j * rowH, d0 = t0 + j * st, pair = [[labs[j], xg - gut / 2], [vals[j], xg + gut / 2]];
+                for (var q = 0; q < 2; q++) {
+                    var L = pair[q][0];
+                    mvJzTag(L, 'MV_CREDIT'); jzNoGhost(L);
+                    try { L.inPoint = Math.max(0, d0); L.outPoint = Math.min(comp.duration, t1); } catch (eio) {}
+                    jzXf(L, 'ADBE Position').setValue([pair[q][1], y]);
+                    jzSetExpr(jzXf(L, 'ADBE Position'), 'var e=ease(time,' + jzN(d0) + ',' + jzN(d0 + fi * 1.3) + ',0,1);value+[0,' + jzN(rise) + '*(1-e)]');
+                    jzSetExpr(jzXf(L, 'ADBE Opacity'), 'value*ease(time,' + jzN(d0) + ',' + jzN(d0 + fi) + ',0,1)*ease(time,' + jzN(t1 - fo) + ',' + jzN(t1) + ',1,0)');
+                }
+            }
+            n++;
+        } catch (e) { mvJzWarn('credits ' + (i + 1) + ': ' + e.toString() + (e.line ? ' (line ' + e.line + ')' : '')); }
+    }
+    return n;
+}
 // plan + build + post in one call. opt: { light, roles, audioItem, audioStart, hud, ghosts }
 function mvJzRun(spec, opt) {
     MVJZ_NO_NUMBERS = !(spec && spec.noNumbers === false);
     var plan = mvJzPlan(spec);
     var comp = jzBuild(plan, opt || {});
     var post = mvJzPost(comp, plan, spec);
+    if (spec.credits) mvJzCredits(comp, plan, spec);
     return { comp: comp, plan: plan, images: post.images, planLog: MVJZ_PLANLOG.slice(0), log: JZLOG.slice(0), fallbacks: JZ_FALLBACKS, fallbackKeys: JZ_FALLBACK_KEYS.slice(0), missingFonts: jzMissingFonts() };
 }
 // fonts each key resolves to on this machine (for checking a style before a build)

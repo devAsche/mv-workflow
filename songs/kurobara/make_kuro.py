@@ -244,6 +244,11 @@ def whole_song():
 BLOOD = {"C2": {4: ("c2", "b1a"), 5: ("c2", "b1a"), 6: ("c2", "b1a")},
          "FC": {6: ("fc7", "b1a", {"pre": 2.4, "flip": True}), 9: ("fc10", "b1b", {"pre": 1.6})}}
 
+# credits (凌さん 2026-11-20 18:30): on the opening title card (29.9-39.6 s, the jacket girl on the left, the title
+# column in the middle), small in the dark lower right, after the title has settled (MVJZ 0.1.12 "credits")
+CREDITS = {"INTRO": [{"start": 31.2, "end": 39.4, "rows": [["music", "DOLLは眠らない"], ["movie", "Ashley"]],
+                      "x": 0.93, "y": 0.80, "align": "right", "size": 0.03, "labelScale": 0.66, "labelFont": "mono", "valueFont": "mincho"}]}
+
 def blood_of(setname):
     return json.load(open(os.path.join(HERE, 'blood', setname, 'blood.json'), encoding='utf-8'))
 
@@ -296,6 +301,9 @@ def section_specs(seed=19):
             sc[ci]['blood'] = {"dir": PCDIR + "\\blood\\" + setname, "meta": meta,
                                "t0": round(sc[ci]['start'] - r0 + opt.get('pre', 0), 3), "seed": sum(map(ord, run))}
             if opt.get('flip'): sc[ci]['blood']['flip'] = True
+        for cr in CREDITS.get(name, []):      # song times -> section times
+            cr = dict(cr); cr['start'] = round(cr['start'] - t0, 3); cr['end'] = round(cr['end'] - t0, 3)
+            spec.setdefault('credits', []).append(cr)
         out[name] = (spec, t0, t1)
     return out, notes
 
