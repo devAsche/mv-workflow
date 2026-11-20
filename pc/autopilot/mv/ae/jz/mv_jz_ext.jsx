@@ -14,7 +14,7 @@
 //   * a "kit": decor parts with fixed parameters repeated on every cut (one look across the song).
 // Spec format: see pc/autopilot/mv/ae/jz/README.md.
 
-var MVJZ_VERSION = '0.1.10';
+var MVJZ_VERSION = '0.1.11';
 var MVJZ_IMG = {};
 
 function mvJzIsArr(o) { return Object.prototype.toString.call(o) === '[object Array]'; }
@@ -617,6 +617,37 @@ jzDecorate = function (ctx, bb) {
     for (i = 1; i <= C.numLayers; i++) if (!mvJzHasTag(C.layer(i), 'MV_PRE')) mvJzTag(C.layer(i), 'MV_DECOR');
     return r;
 };
+// No numbering labels (rule 2026-11-20, 凌さん: "No." and numbers whose meaning is unclear are not wanted). JIZURA
+// prints line numbers, cut folios, "No.xx", timecodes and counters as labels in many layouts and decor; with
+// spec.noNumbers (on unless false) those text layers are switched off after they are built, so every pick, position and
+// random draw stays as planned and only the numbers vanish. A label is a text layer with a digit, "No." or "№" that is
+// not part of the lyric itself. tyRunningHead (line number + line, and the cut folio with its rules) is numbering as a
+// whole, so all its layers go off. JIZURA's tidy pass (jzTidyComp) then removes the switched-off layers.
+var MVJZ_NO_NUMBERS = true;
+function mvJzNumberLabel(ctx, str) {
+    var s = String(str == null ? '' : str);
+    if (!/[0-9\uFF10-\uFF19\u2116]|No\./.test(s)) return false;
+    var c = ctx && ctx.cut ? ctx.cut : {}, t = jzStrip(s);
+    var lyr = jzStrip(String(c.lineText || '')) + '\n' + jzStrip(String(c.text || ''));
+    return !(t && lyr.indexOf(t) >= 0);
+}
+var mvJzText0 = jzText;
+jzText = function (ctx, str, o) {
+    var L = mvJzText0(ctx, str, o);
+    if (MVJZ_NO_NUMBERS && mvJzNumberLabel(ctx, str)) { try { L.enabled = false; mvJzTag(L, 'MV_NONUMBER'); } catch (e) {} }
+    return L;
+};
+if (JZ_REG.decor && JZ_REG.decor.tyRunningHead) (function (def) {
+    var b0 = def.build;
+    def.build = function (ctx, bb, d) {
+        var C = ctx.comp, i;
+        if (!MVJZ_NO_NUMBERS) return b0.apply(this, arguments);
+        for (i = 1; i <= C.numLayers; i++) mvJzTag(C.layer(i), 'MV_RHPRE');
+        var r = b0.apply(this, arguments);
+        for (i = 1; i <= C.numLayers; i++) if (!mvJzHasTag(C.layer(i), 'MV_RHPRE')) { try { C.layer(i).enabled = false; } catch (e) {} mvJzTag(C.layer(i), 'MV_NONUMBER'); }
+        return r;
+    };
+})(JZ_REG.decor.tyRunningHead);
 function mvJzShift(wc, cut, W, H) {
     var sh = cut.mvShift, CL = mvJzFindLayer(wc, 'content'), pc = CL ? CL.source : null;
     if (!pc || pc.numLayers == null) { mvJzWarn('cut ' + (cut.index + 1) + ': no content comp in the wrapper; shift skipped'); return false; }
@@ -693,6 +724,7 @@ function mvJzPost(comp, plan, spec) {
 
 // plan + build + post in one call. opt: { light, roles, audioItem, audioStart, hud, ghosts }
 function mvJzRun(spec, opt) {
+    MVJZ_NO_NUMBERS = !(spec && spec.noNumbers === false);
     var plan = mvJzPlan(spec);
     var comp = jzBuild(plan, opt || {});
     var post = mvJzPost(comp, plan, spec);

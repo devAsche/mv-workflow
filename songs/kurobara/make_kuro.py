@@ -209,7 +209,9 @@ CUTS = [
  {"sec": "OUT"},
  L(72, layout="center", enter="blur", exit="drift", scheme=5, start=243.3),
  L(73, layout="center", enter="blur", exit="drift", scheme=5),
- L(74, layout="center", enter="blur", exit="drift", scheme=5),
+ # "そして……" comes after a 2.4 s rest: switch late (0.4 s before the voice) so the line is not up long before it is
+ # whispered (凌さん 2026-11-20); 永遠の愛。 stays through the rest
+ L(74, layout="center", enter="blur", exit="drift", scheme=5, start=252.95),
  L(75, layout="vcols", sync="char", syncStyle="blur", scheme=3, emph=True, end=259.6),
  {"kind": "title", "start": 259.6, "end": 264.8, "text": "黒薔薇ノ契リ", "layout": "vcols", "params": {"variant": "repeat", "cols": 1}, "image": pic("j18", cam={"zoom": -0.4}), "enter": "blur", "exit": "blur", "cam": "panR", "scheme": 3},
 ]
